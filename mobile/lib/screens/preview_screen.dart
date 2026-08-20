@@ -52,19 +52,28 @@ class _PreviewScreenState extends State<PreviewScreen> {
   }
 
   Future<void> _saveToGallery() async {
-    final result = await SaverGallery.saveFile(
-      file: widget.videoPath,
-      fileName: 'MoneyPrinterMobile_${DateTime.now().millisecondsSinceEpoch}',
-      skipIfExists: false,
-    );
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(result.isSuccess
-              ? 'Saved to gallery!'
-              : 'Save failed: ${result.errorMessage}'),
-        ),
+    try {
+      final result = await SaverGallery.saveFile(
+        file: widget.videoPath,
+        name: 'MoneyPrinterMobile_${DateTime.now().millisecondsSinceEpoch}',
+        androidRelativePath: 'Movies/MoneyPrinterMobile',
+        skipIfExists: false,
       );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result.isSuccess
+                ? 'Saved to gallery!'
+                : 'Save failed: ${result.errorMessage}'),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Save failed: $e')),
+        );
+      }
     }
   }
 
