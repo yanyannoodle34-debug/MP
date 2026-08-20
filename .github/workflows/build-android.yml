@@ -18,26 +18,21 @@ jobs:
     timeout-minutes: 60
 
     steps:
-      # ── Checkout ─────────────────────────────────────────────────────────────
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           ref: claude/claude-md-docs-2lkbdz
 
-      # ── Java ─────────────────────────────────────────────────────────────────
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      # ── Android SDK ───────────────────────────────────────────────────────────
-      # GitHub-hosted ubuntu-latest runners ship the Android SDK at:
-      # /usr/local/lib/android/sdk  (ANDROID_SDK_ROOT env var is already set)
       - name: Accept Android SDK licenses
         run: yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
-      - name: Install NDK (required by ffmpeg_kit_flutter)
+      - name: Install NDK
         run: |
           $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager \
             "ndk;25.1.8937393" \
@@ -45,7 +40,6 @@ jobs:
             "platforms;android-34" \
             --sdk_root=$ANDROID_SDK_ROOT
 
-      # ── Flutter ───────────────────────────────────────────────────────────────
       - name: Set up Flutter 3.24.5
         uses: subosito/flutter-action@v2
         with:
@@ -56,77 +50,77 @@ jobs:
       - name: Flutter doctor
         run: flutter doctor -v
 
-      # ── Build ─────────────────────────────────────────────────────────────────
       - name: Install pub dependencies
         working-directory: mobile
         run: flutter pub get
 
       - name: Build release APK
         working-directory: mobile
-        env:
-          ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
         run: |
-          flutter build apk \
-            --release \
-            --target-platform android-arm64 \
-            --split-per-abi
-          echo "=== APK files ==="
+          flutter build apk --release --target-platform android-arm64 --split-per-abi
           find build/app/outputs -name "*.apk" -exec ls -lh {} \;
 
-      # ── Rename APK ────────────────────────────────────────────────────────────
       - name: Rename APK for release
         working-directory: mobile
         run: |
           VERSION="${{ github.event.inputs.version || '1.0.0' }}"
           cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk \
-             "MoneyPrinterMobile-v${VERSION}-arm64.apk" || \
+             "CloudAICreator-v${VERSION}-arm64.apk" 2>/dev/null || \
           cp build/app/outputs/flutter-apk/app-release.apk \
-             "MoneyPrinterMobile-v${VERSION}.apk"
-          ls -lh MoneyPrinterMobile*.apk
+             "CloudAICreator-v${VERSION}.apk"
+          ls -lh CloudAICreator*.apk
 
-      # ── Upload build artifact ─────────────────────────────────────────────────
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MoneyPrinterMobile-apk
-          path: mobile/MoneyPrinterMobile*.apk
+          name: CloudAICreator-apk
+          path: mobile/CloudAICreator*.apk
           retention-days: 30
 
-      # ── GitHub Release ────────────────────────────────────────────────────────
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: "v${{ github.event.inputs.version || '1.0.0' }}"
-          name: "MoneyPrinterMobile v${{ github.event.inputs.version || '1.0.0' }}"
+          name: "CloudAI Creator v${{ github.event.inputs.version || '1.0.0' }}"
           body: |
-            ## MoneyPrinterMobile — Android APK
+            ## CloudAI Creator — Android APK
 
-            AI-powered short video generator running **100% locally on Android** (API 24+).
+            AI video creator that generates **script + images + voice through cloud APIs**
+            and **renders the video on your device** with FFmpeg.
+
+            You provide your own API keys inside the app. Keys are stored locally in
+            SharedPreferences and never leave the device except to call the provider you selected.
 
             ### Installation
-            1. Download `MoneyPrinterMobile-v*-arm64.apk` below (arm64 — covers all modern Android phones)
-            2. On your Android device: **Settings → Security → Install unknown apps** → enable for your browser/file manager
-            3. Open the downloaded APK to install
+            1. Download `CloudAICreator-v*-arm64.apk` below (arm64 — modern Android phones)
+            2. On device: **Settings → Security → Install unknown apps** → enable for your browser
+            3. Open the APK to install
 
             ### First run
             1. Tap ⚙ Settings
-            2. Enter your [OpenRouter API key](https://openrouter.ai/keys) (free tier available)
-            3. Enter your [Pexels API key](https://www.pexels.com/api/) (free)
-            4. Enter a topic on the home screen → tap **Generate Video**
+            2. Pick providers and enter your keys:
+               - **LLM (script)**: OpenRouter | OpenAI
+               - **Image**: DALL-E 3 | Stability AI | fal.ai Flux
+               - **Voice**: ElevenLabs | OpenAI TTS | on-device (free)
+            3. Enter topic → **Generate Video**
 
-            ### Pipeline (on-device)
+            ### Pipeline
             ```
-            Topic → LLM (script + search terms)
-                  → Pexels API (stock clips downloaded to device)
-                  → on-device TTS (audio synthesis)
-                  → FFmpeg (concat + subtitles + encode → MP4)
+            Topic → LLM (per-scene narration + image prompt)
+                  → Cloud Image API (one 9:16 image per scene)
+                  → Cloud TTS API (one audio clip per scene)
+                  → FFmpeg on-device:
+                      · image + audio + ken-burns zoom = scene clip
+                      · concat all scenes
+                      · burn subtitles
+                      · encode → MP4
                   → Save to gallery / Share
             ```
 
             ### Requirements
-            - Android 7.0+ (API 24), arm64 device
-            - Internet for API calls (LLM + Pexels); all processing is on-device
-          files: mobile/MoneyPrinterMobile*.apk
+            - Android 7.0+ (API 24), arm64
+            - Internet for cloud API calls; rendering is on-device
+          files: mobile/CloudAICreator*.apk
           draft: false
           prerelease: false
           make_latest: true
