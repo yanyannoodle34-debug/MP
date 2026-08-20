@@ -4,7 +4,7 @@ publish_to: none
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.2.0 <4.0.0'
+  sdk: '>=3.4.0 <4.0.0'
 
 dependencies:
   flutter:
@@ -14,14 +14,14 @@ dependencies:
   ffmpeg_kit_flutter_full_gpl: ^6.0.3
 
   # HTTP client
-  dio: ^5.4.3
+  dio: ^5.11.0
 
   # On-device TTS → audio file via synthesizeToFile()
-  flutter_tts: ^4.0.2
+  flutter_tts: ^4.2.5
 
   # Video playback
   video_player: ^2.8.7
-  chewie: ^1.15.0
+  chewie: ^1.10.0
 
   # File system / paths
   path_provider: ^2.1.4
@@ -30,17 +30,17 @@ dependencies:
   permission_handler: ^11.3.1
 
   # State management
-  provider: ^6.1.2
+  provider: ^6.1.5
 
   # Persistent settings (API keys, preferences)
-  shared_preferences: ^2.3.1
+  shared_preferences: ^2.2.2
 
   # Save to gallery / share
-  saver_gallery: ^5.1.0
-  share_plus: ^13.3.0
+  saver_gallery: ^4.1.2
+  share_plus: ^12.0.2
 
   # Unique IDs for tasks
-  uuid: ^4.5.1
+  uuid: ^4.6.0
 
   cupertino_icons: ^1.0.6
 
