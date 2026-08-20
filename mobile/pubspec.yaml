@@ -1,0 +1,55 @@
+name: money_printer_mobile
+description: AI-powered short video generator — runs fully on-device (Android).
+publish_to: none
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.2.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Video processing (GPL full build — includes x264, libass, libfdk-aac)
+  ffmpeg_kit_flutter_full_gpl: ^6.0.3
+
+  # HTTP client
+  dio: ^5.4.3
+
+  # On-device TTS → audio file
+  flutter_tts: ^4.0.2
+
+  # Video playback
+  video_player: ^2.8.7
+  chewie: ^1.8.5
+
+  # File system / paths
+  path_provider: ^2.1.4
+
+  # Runtime permissions (WRITE_EXTERNAL_STORAGE, INTERNET)
+  permission_handler: ^11.3.1
+
+  # State management
+  provider: ^6.1.2
+
+  # Persistent settings (API keys, preferences)
+  shared_preferences: ^2.3.1
+
+  # Gallery / share
+  share_plus: ^10.0.2
+  saver_gallery: ^3.0.6
+
+  # Unique IDs for tasks
+  uuid: ^4.5.1
+
+  cupertino_icons: ^1.0.6
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/bgm/
