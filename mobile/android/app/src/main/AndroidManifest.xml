@@ -38,10 +38,22 @@
             </intent-filter>
         </activity>
 
-        <!-- flutter_tts: allow TTS engine to run in background -->
         <meta-data
             android:name="io.flutter.embedding.android.EnableImpeller"
             android:value="false" />
+
+        <!-- Required: opt into Flutter v2 embedding -->
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2" />
     </application>
+
+    <!-- share_plus queries: allow querying installed apps for share targets -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.SEND" />
+            <data android:mimeType="*/*" />
+        </intent>
+    </queries>
 
 </manifest>

@@ -1,54 +1,48 @@
 plugins {
     id "com.android.application"
     id "kotlin-android"
+    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id "dev.flutter.flutter-gradle-plugin"
 }
 
 android {
-    namespace "com.moneyprinter.mobile"
-    compileSdk flutter.compileSdkVersion
-    ndkVersion "25.1.8937393"
+    namespace = "com.moneyprinter.mobile"
+    compileSdk = 34
+    ndkVersion = "25.1.8937393"
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
     }
 
     kotlinOptions {
-        jvmTarget = "1.8"
+        jvmTarget = JavaVersion.VERSION_1_8
     }
 
     defaultConfig {
-        applicationId "com.moneyprinter.mobile"
+        applicationId = "com.moneyprinter.mobile"
         // ffmpeg_kit_flutter requires minSdkVersion 24 (Android 7.0+)
-        minSdkVersion 24
-        targetSdkVersion flutter.targetSdkVersion
-        versionCode flutter.versionCode
-        versionName flutter.versionName
+        minSdk = 24
+        targetSdk = 34
+        versionCode = flutter.versionCode
+        versionName = flutter.versionName
     }
 
     buildTypes {
         release {
-            signingConfig signingConfigs.debug
-            minifyEnabled false
-            shrinkResources false
+            // Signing with debug keys so unsigned APK still installs.
+            signingConfig = signingConfigs.debug
+            minifyEnabled = false
+            shrinkResources = false
         }
     }
 
-    // Reduce APK size: keep only arm64-v8a and armeabi-v7a (covers 99%+ of devices)
-    splits {
-        abi {
-            enable false // set true to create per-ABI APKs for Play Store
-        }
-    }
-
-    // Required by ffmpeg_kit_flutter and some audio libraries
     packagingOptions {
-        pickFirst '**/libc++_shared.so'
-        pickFirst '**/libfbjni.so'
+        pickFirst "**/libc++_shared.so"
+        pickFirst "**/libfbjni.so"
     }
 }
 
 flutter {
-    source "../.."
+    source = "../.."
 }
