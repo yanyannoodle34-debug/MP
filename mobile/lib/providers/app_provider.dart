@@ -61,9 +61,7 @@ class AppProvider extends ChangeNotifier {
 
       // ── 2. Images + Audio (parallel per scene) ─────────────────────────────
       _validateKey('Image API key', config.imageApiKey);
-      if (config.ttsProvider != TtsProvider.device) {
-        _validateKey('TTS API key', config.ttsApiKey);
-      }
+      _validateKey('TTS API key', config.ttsApiKey);
 
       _update(currentTask!
           .copyWith(step: TaskStep.generatingImages)

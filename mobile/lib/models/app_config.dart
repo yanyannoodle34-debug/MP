@@ -2,7 +2,7 @@ enum LlmProvider { openrouter, openai }
 
 enum ImageProvider { dalle3, stabilityAi, flux }
 
-enum TtsProvider { elevenLabs, openaiTts, device }
+enum TtsProvider { elevenLabs, openaiTts }
 
 class AppConfig {
   // ── LLM ──────────────────────────────────────────────────────────────────
@@ -13,20 +13,18 @@ class AppConfig {
   // ── Image ─────────────────────────────────────────────────────────────────
   final ImageProvider imageProvider;
   final String imageApiKey;
-  final String imageModel; // e.g. 'dall-e-3', 'sd3-medium', 'fal-ai/flux/schnell'
+  final String imageModel;
 
   // ── TTS ───────────────────────────────────────────────────────────────────
   final TtsProvider ttsProvider;
-  final String ttsApiKey;       // ElevenLabs or OpenAI key
-  final String ttsVoiceId;      // ElevenLabs voice ID
-  final String ttsVoice;        // OpenAI: alloy | echo | fable | onyx | nova | shimmer
-  final String ttsLanguage;     // device TTS language code
-  final double ttsSpeechRate;   // device TTS rate
+  final String ttsApiKey;
+  final String ttsVoiceId;
+  final String ttsVoice;
 
   // ── Video ─────────────────────────────────────────────────────────────────
   final bool subtitlesEnabled;
-  final int sceneCount;        // 4–8 scenes
-  final bool kenBurnsEnabled;  // slow zoom effect on images
+  final int sceneCount;
+  final bool kenBurnsEnabled;
 
   const AppConfig({
     this.llmProvider = LlmProvider.openrouter,
@@ -37,10 +35,8 @@ class AppConfig {
     this.imageModel = 'dall-e-3',
     this.ttsProvider = TtsProvider.elevenLabs,
     this.ttsApiKey = '',
-    this.ttsVoiceId = 'EXAVITQu4vr4xnSDxMaL', // ElevenLabs "Sarah"
+    this.ttsVoiceId = 'EXAVITQu4vr4xnSDxMaL',
     this.ttsVoice = 'nova',
-    this.ttsLanguage = 'en-US',
-    this.ttsSpeechRate = 0.9,
     this.subtitlesEnabled = true,
     this.sceneCount = 5,
     this.kenBurnsEnabled = true,
@@ -61,8 +57,6 @@ class AppConfig {
     String? ttsApiKey,
     String? ttsVoiceId,
     String? ttsVoice,
-    String? ttsLanguage,
-    double? ttsSpeechRate,
     bool? subtitlesEnabled,
     int? sceneCount,
     bool? kenBurnsEnabled,
@@ -78,8 +72,6 @@ class AppConfig {
       ttsApiKey: ttsApiKey ?? this.ttsApiKey,
       ttsVoiceId: ttsVoiceId ?? this.ttsVoiceId,
       ttsVoice: ttsVoice ?? this.ttsVoice,
-      ttsLanguage: ttsLanguage ?? this.ttsLanguage,
-      ttsSpeechRate: ttsSpeechRate ?? this.ttsSpeechRate,
       subtitlesEnabled: subtitlesEnabled ?? this.subtitlesEnabled,
       sceneCount: sceneCount ?? this.sceneCount,
       kenBurnsEnabled: kenBurnsEnabled ?? this.kenBurnsEnabled,
@@ -97,8 +89,6 @@ class AppConfig {
         'ttsApiKey': ttsApiKey,
         'ttsVoiceId': ttsVoiceId,
         'ttsVoice': ttsVoice,
-        'ttsLanguage': ttsLanguage,
-        'ttsSpeechRate': ttsSpeechRate,
         'subtitlesEnabled': subtitlesEnabled,
         'sceneCount': sceneCount,
         'kenBurnsEnabled': kenBurnsEnabled,
@@ -124,9 +114,6 @@ class AppConfig {
         ttsApiKey: j['ttsApiKey'] as String? ?? '',
         ttsVoiceId: j['ttsVoiceId'] as String? ?? 'EXAVITQu4vr4xnSDxMaL',
         ttsVoice: j['ttsVoice'] as String? ?? 'nova',
-        ttsLanguage: j['ttsLanguage'] as String? ?? 'en-US',
-        ttsSpeechRate:
-            (j['ttsSpeechRate'] as num?)?.toDouble() ?? 0.9,
         subtitlesEnabled: j['subtitlesEnabled'] as bool? ?? true,
         sceneCount: j['sceneCount'] as int? ?? 5,
         kenBurnsEnabled: j['kenBurnsEnabled'] as bool? ?? true,

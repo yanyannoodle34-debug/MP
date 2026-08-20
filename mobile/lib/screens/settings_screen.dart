@@ -148,22 +148,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
             nameOf: (v) => switch (v) {
               TtsProvider.elevenLabs => 'ElevenLabs',
               TtsProvider.openaiTts => 'OpenAI TTS',
-              TtsProvider.device => 'On-Device (free)',
             },
             onChanged: (v) =>
                 setState(() { _cfg = _cfg.copyWith(ttsProvider: v); _dirty = true; }),
           ),
-          if (_cfg.ttsProvider != TtsProvider.device) ...[
-            _key('API Key', _ttsKey,
-                hint: _cfg.ttsProvider == TtsProvider.elevenLabs
-                    ? 'xi-…  elevenlabs.io'
-                    : 'sk-…  platform.openai.com'),
-            if (_cfg.ttsProvider == TtsProvider.elevenLabs)
-              _text('Voice ID', _ttsVoiceId, hint: 'EXAVITQu4vr4xnSDxMaL'),
-            if (_cfg.ttsProvider == TtsProvider.openaiTts)
-              _text('Voice', _ttsVoice,
-                  hint: 'nova | alloy | echo | fable | onyx | shimmer'),
-          ],
+          _key('API Key', _ttsKey,
+              hint: _cfg.ttsProvider == TtsProvider.elevenLabs
+                  ? 'xi-…  elevenlabs.io'
+                  : 'sk-…  platform.openai.com'),
+          if (_cfg.ttsProvider == TtsProvider.elevenLabs)
+            _text('Voice ID', _ttsVoiceId, hint: 'EXAVITQu4vr4xnSDxMaL'),
+          if (_cfg.ttsProvider == TtsProvider.openaiTts)
+            _text('Voice', _ttsVoice,
+                hint: 'nova | alloy | echo | fable | onyx | shimmer'),
           const SizedBox(height: 24),
 
           // ── Video ────────────────────────────────────────────────────────

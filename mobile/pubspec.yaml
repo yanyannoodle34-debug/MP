@@ -1,5 +1,5 @@
 name: money_printer_mobile
-description: AI-powered short video generator — runs fully on-device (Android).
+description: CloudAI Creator — cloud AI script/image/voice, on-device video render.
 publish_to: none
 version: 1.0.0+1
 
@@ -10,18 +10,15 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # Video processing — full GPL build includes x264, libass (subtitles), fdk-aac
+  # Video processing (full GPL build: x264, libass subtitles, fdk-aac)
   ffmpeg_kit_flutter_full_gpl: ^6.0.3
 
   # HTTP client
-  dio: ^5.11.0
-
-  # On-device TTS → audio file via synthesizeToFile()
-  flutter_tts: ^4.2.5
+  dio: ^5.4.3
 
   # Video playback
   video_player: ^2.8.7
-  chewie: ^1.10.0
+  chewie: ^1.8.5
 
   # File system / paths
   path_provider: ^2.1.4
@@ -30,17 +27,17 @@ dependencies:
   permission_handler: ^11.3.1
 
   # State management
-  provider: ^6.1.5
+  provider: ^6.1.2
 
   # Persistent settings (API keys, preferences)
   shared_preferences: ^2.2.2
 
   # Save to gallery / share
-  saver_gallery: ^4.1.2
-  share_plus: ^12.0.2
+  saver_gallery: ^4.0.1
+  share_plus: ^10.1.4
 
   # Unique IDs for tasks
-  uuid: ^4.6.0
+  uuid: ^4.5.1
 
   cupertino_icons: ^1.0.6
 
@@ -51,5 +48,3 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-  assets:
-    - assets/bgm/
