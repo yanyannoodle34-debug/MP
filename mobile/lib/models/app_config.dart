@@ -1,6 +1,6 @@
 enum LlmProvider { openrouter, openai }
 
-enum ImageProvider { dalle3, stabilityAi, flux }
+enum ImageGenProvider { dalle3, stabilityAi, flux }
 
 enum TtsProvider { elevenLabs, openaiTts }
 
@@ -11,7 +11,7 @@ class AppConfig {
   final String llmModel;
 
   // ── Image ─────────────────────────────────────────────────────────────────
-  final ImageProvider imageProvider;
+  final ImageGenProvider imageProvider;
   final String imageApiKey;
   final String imageModel;
 
@@ -30,7 +30,7 @@ class AppConfig {
     this.llmProvider = LlmProvider.openrouter,
     this.llmApiKey = '',
     this.llmModel = 'openai/gpt-4o-mini',
-    this.imageProvider = ImageProvider.dalle3,
+    this.imageProvider = ImageGenProvider.dalle3,
     this.imageApiKey = '',
     this.imageModel = 'dall-e-3',
     this.ttsProvider = TtsProvider.elevenLabs,
@@ -50,7 +50,7 @@ class AppConfig {
     LlmProvider? llmProvider,
     String? llmApiKey,
     String? llmModel,
-    ImageProvider? imageProvider,
+    ImageGenProvider? imageProvider,
     String? imageApiKey,
     String? imageModel,
     TtsProvider? ttsProvider,
@@ -101,9 +101,9 @@ class AppConfig {
         ),
         llmApiKey: j['llmApiKey'] as String? ?? '',
         llmModel: j['llmModel'] as String? ?? 'openai/gpt-4o-mini',
-        imageProvider: ImageProvider.values.firstWhere(
+        imageProvider: ImageGenProvider.values.firstWhere(
           (e) => e.name == j['imageProvider'],
-          orElse: () => ImageProvider.dalle3,
+          orElse: () => ImageGenProvider.dalle3,
         ),
         imageApiKey: j['imageApiKey'] as String? ?? '',
         imageModel: j['imageModel'] as String? ?? 'dall-e-3',

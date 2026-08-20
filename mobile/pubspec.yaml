@@ -46,5 +46,13 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^4.0.0
 
+# Force older versions compatible with Flutter 3.24.5's Gradle plugin.
+# wakelock_plus (pulled by chewie) → package_info_plus.
+# package_info_plus 9.x uses flutter.compileSdkVersion Gradle extension
+# that only exists in Flutter 3.27+. Pinning to 8.x keeps the old style.
+dependency_overrides:
+  wakelock_plus: 1.3.3
+  package_info_plus: 8.3.1
+
 flutter:
   uses-material-design: true

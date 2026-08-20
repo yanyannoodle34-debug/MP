@@ -108,22 +108,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           // ── Image ────────────────────────────────────────────────────────
           _section('Image Generation'),
-          _chips<ImageProvider>(
+          _chips<ImageGenProvider>(
             label: 'Provider',
             value: _cfg.imageProvider,
-            options: ImageProvider.values,
+            options: ImageGenProvider.values,
             nameOf: (v) => switch (v) {
-              ImageProvider.dalle3 => 'DALL-E 3',
-              ImageProvider.stabilityAi => 'Stability AI',
-              ImageProvider.flux => 'fal.ai Flux',
+              ImageGenProvider.dalle3 => 'DALL-E 3',
+              ImageGenProvider.stabilityAi => 'Stability AI',
+              ImageGenProvider.flux => 'fal.ai Flux',
             },
             onChanged: (v) => setState(() {
               _cfg = _cfg.copyWith(
                 imageProvider: v,
                 imageModel: switch (v) {
-                  ImageProvider.dalle3 => 'dall-e-3',
-                  ImageProvider.stabilityAi => 'sd3-medium',
-                  ImageProvider.flux => 'fal-ai/flux/schnell',
+                  ImageGenProvider.dalle3 => 'dall-e-3',
+                  ImageGenProvider.stabilityAi => 'sd3-medium',
+                  ImageGenProvider.flux => 'fal-ai/flux/schnell',
                 },
               );
               _imageModel.text = _cfg.imageModel;
@@ -132,9 +132,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           _key('API Key', _imageKey,
               hint: switch (_cfg.imageProvider) {
-                ImageProvider.dalle3 => 'sk-…  platform.openai.com',
-                ImageProvider.stabilityAi => 'sk-…  platform.stability.ai',
-                ImageProvider.flux => 'your-key  fal.ai/dashboard',
+                ImageGenProvider.dalle3 => 'sk-…  platform.openai.com',
+                ImageGenProvider.stabilityAi => 'sk-…  platform.stability.ai',
+                ImageGenProvider.flux => 'your-key  fal.ai/dashboard',
               }),
           _text('Model', _imageModel, hint: _cfg.imageModel),
           const SizedBox(height: 24),

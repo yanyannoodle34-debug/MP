@@ -12,7 +12,6 @@ class GenerateScreen extends StatelessWidget {
     final task = context.watch<AppProvider>().currentTask;
     if (task == null) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
-    final isDone = task.step == TaskStep.done;
     final isError = task.step == TaskStep.error;
 
     return PopScope(

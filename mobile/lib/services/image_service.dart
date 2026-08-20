@@ -11,11 +11,11 @@ class ImageService {
   /// and saves it to a temp file. Returns the local file path.
   Future<String> generate(String prompt, int sceneIndex, AppConfig cfg) async {
     switch (cfg.imageProvider) {
-      case ImageProvider.dalle3:
+      case ImageGenProvider.dalle3:
         return _dalle3(prompt, sceneIndex, cfg);
-      case ImageProvider.stabilityAi:
+      case ImageGenProvider.stabilityAi:
         return _stabilityAi(prompt, sceneIndex, cfg);
-      case ImageProvider.flux:
+      case ImageGenProvider.flux:
         return _flux(prompt, sceneIndex, cfg);
     }
   }

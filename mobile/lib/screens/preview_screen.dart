@@ -62,8 +62,8 @@ class _PreviewScreenState extends State<PreviewScreen> {
   Future<void> _saveToGallery() async {
     try {
       final result = await SaverGallery.saveFile(
-        file: widget.videoPath,
-        name: 'CloudAI_${DateTime.now().millisecondsSinceEpoch}',
+        filePath: widget.videoPath,
+        fileName: 'CloudAI_${DateTime.now().millisecondsSinceEpoch}.mp4',
         androidRelativePath: 'Movies/CloudAICreator',
         skipIfExists: false,
       );
@@ -82,7 +82,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
   }
 
   Future<void> _share() async {
-    await SharePlus.shareXFiles(
+    await Share.shareXFiles(
       [XFile(widget.videoPath)],
       text: 'Made with CloudAI Creator',
     );

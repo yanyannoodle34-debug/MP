@@ -9,8 +9,8 @@ class LlmService {
   Future<VideoScript> generateScript(String topic, AppConfig cfg) async {
     final n = cfg.sceneCount;
 
-    const system = '''
-You are a short-form video scriptwriter. Write an engaging ${n}-scene narration
+    final system = '''
+You are a short-form video scriptwriter. Write an engaging $n-scene narration
 and craft a vivid image-generation prompt for each scene.
 Return ONLY valid JSON — no markdown, no extra keys.
 ''';
