@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- Network for LLM API + Pexels downloads -->
+    <!-- Network for LLM, Image, and TTS cloud API calls -->
     <uses-permission android:name="android.permission.INTERNET" />
 
     <!-- Storage: writing video to Movies/ folder -->
@@ -14,7 +14,7 @@
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
 
     <application
-        android:label="MoneyPrinterMobile"
+        android:label="CloudAI Creator"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:requestLegacyExternalStorage="false"

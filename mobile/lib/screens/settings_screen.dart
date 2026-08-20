@@ -11,185 +11,252 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  late final _llmUrlCtrl = TextEditingController();
-  late final _llmKeyCtrl = TextEditingController();
-  late final _llmModelCtrl = TextEditingController();
-  late final _pexelsKeyCtrl = TextEditingController();
-  late final _ttsLangCtrl = TextEditingController();
-  late double _speechRate;
-  late bool _subtitles;
-  late int _duration;
+  late AppConfig _cfg;
+  bool _dirty = false;
+
+  late final TextEditingController _llmKey;
+  late final TextEditingController _llmModel;
+  late final TextEditingController _imageKey;
+  late final TextEditingController _imageModel;
+  late final TextEditingController _ttsKey;
+  late final TextEditingController _ttsVoiceId;
+  late final TextEditingController _ttsVoice;
 
   @override
   void initState() {
     super.initState();
-    final cfg = context.read<AppProvider>().config;
-    _llmUrlCtrl.text = cfg.llmBaseUrl;
-    _llmKeyCtrl.text = cfg.llmApiKey;
-    _llmModelCtrl.text = cfg.llmModel;
-    _pexelsKeyCtrl.text = cfg.pexelsApiKey;
-    _ttsLangCtrl.text = cfg.ttsLanguage;
-    _speechRate = cfg.ttsSpeechRate;
-    _subtitles = cfg.subtitlesEnabled;
-    _duration = cfg.videoDurationSec;
+    _cfg = context.read<AppProvider>().config;
+    _llmKey = TextEditingController(text: _cfg.llmApiKey);
+    _llmModel = TextEditingController(text: _cfg.llmModel);
+    _imageKey = TextEditingController(text: _cfg.imageApiKey);
+    _imageModel = TextEditingController(text: _cfg.imageModel);
+    _ttsKey = TextEditingController(text: _cfg.ttsApiKey);
+    _ttsVoiceId = TextEditingController(text: _cfg.ttsVoiceId);
+    _ttsVoice = TextEditingController(text: _cfg.ttsVoice);
   }
 
   @override
   void dispose() {
-    for (final c in [
-      _llmUrlCtrl, _llmKeyCtrl, _llmModelCtrl, _pexelsKeyCtrl, _ttsLangCtrl
-    ]) {
+    for (final c in [_llmKey, _llmModel, _imageKey, _imageModel, _ttsKey, _ttsVoiceId, _ttsVoice]) {
       c.dispose();
     }
     super.dispose();
   }
 
+  void _mark() => setState(() => _dirty = true);
+
   Future<void> _save() async {
-    final cfg = AppConfig(
-      llmBaseUrl: _llmUrlCtrl.text.trim(),
-      llmApiKey: _llmKeyCtrl.text.trim(),
-      llmModel: _llmModelCtrl.text.trim(),
-      pexelsApiKey: _pexelsKeyCtrl.text.trim(),
-      ttsLanguage: _ttsLangCtrl.text.trim(),
-      ttsSpeechRate: _speechRate,
-      subtitlesEnabled: _subtitles,
-      videoDurationSec: _duration,
+    final updated = _cfg.copyWith(
+      llmApiKey: _llmKey.text.trim(),
+      llmModel: _llmModel.text.trim(),
+      imageApiKey: _imageKey.text.trim(),
+      imageModel: _imageModel.text.trim(),
+      ttsApiKey: _ttsKey.text.trim(),
+      ttsVoiceId: _ttsVoiceId.text.trim(),
+      ttsVoice: _ttsVoice.text.trim(),
     );
-    await context.read<AppProvider>().saveConfig(cfg);
+    await context.read<AppProvider>().saveConfig(updated);
+    setState(() => _dirty = false);
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Settings saved.')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Settings saved')));
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final cs = Theme.of(context).colorScheme;
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: AppBar(
+        title: const Text('Settings'),
+        actions: [
+          if (_dirty)
+            TextButton(
+              onPressed: _save,
+              child: Text('Save', style: TextStyle(color: cs.primary)),
+            ),
+        ],
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          _section('LLM (Script Generation)', [
-            _field('API Base URL', _llmUrlCtrl,
-                hint: 'https://openrouter.ai/api/v1'),
-            _field('API Key', _llmKeyCtrl, obscure: true, hint: 'sk-or-…'),
-            _field('Model', _llmModelCtrl, hint: 'openai/gpt-4o-mini'),
-          ]),
-          const SizedBox(height: 16),
-          _section('Pexels (Stock Videos)', [
-            _field('Pexels API Key', _pexelsKeyCtrl,
-                obscure: true, hint: 'Free key at pexels.com/api'),
-          ]),
-          const SizedBox(height: 16),
-          _section('Text-to-Speech (on-device)', [
-            _field('Language code', _ttsLangCtrl, hint: 'en-US'),
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Speech rate: ${_speechRate.toStringAsFixed(2)}',
-                      style: theme.textTheme.bodyMedium),
-                  Slider(
-                    value: _speechRate,
-                    min: 0.5,
-                    max: 1.5,
-                    divisions: 20,
-                    label: _speechRate.toStringAsFixed(2),
-                    onChanged: (v) => setState(() => _speechRate = v),
-                  ),
-                ],
-              ),
-            ),
-            SwitchListTile(
-              title: const Text('Burn subtitles'),
-              value: _subtitles,
-              onChanged: (v) => setState(() => _subtitles = v),
-              contentPadding: EdgeInsets.zero,
-            ),
-          ]),
-          const SizedBox(height: 16),
-          _section('Video', [
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Target duration: ${_duration}s',
-                      style: theme.textTheme.bodyMedium),
-                  Slider(
-                    value: _duration.toDouble(),
-                    min: 15,
-                    max: 60,
-                    divisions: 9,
-                    label: '${_duration}s',
-                    onChanged: (v) =>
-                        setState(() => _duration = v.round()),
-                  ),
-                ],
-              ),
-            ),
-          ]),
+          // ── LLM ─────────────────────────────────────────────────────────
+          _section('Script Generation (LLM)'),
+          _chips<LlmProvider>(
+            label: 'Provider',
+            value: _cfg.llmProvider,
+            options: LlmProvider.values,
+            nameOf: (v) => v == LlmProvider.openrouter ? 'OpenRouter' : 'OpenAI',
+            onChanged: (v) => setState(() {
+              _cfg = _cfg.copyWith(
+                llmProvider: v,
+                llmModel: v == LlmProvider.openrouter ? 'openai/gpt-4o-mini' : 'gpt-4o-mini',
+              );
+              _llmModel.text = _cfg.llmModel;
+              _dirty = true;
+            }),
+          ),
+          _key('API Key', _llmKey,
+              hint: _cfg.llmProvider == LlmProvider.openrouter
+                  ? 'sk-or-…  openrouter.ai/keys'
+                  : 'sk-…  platform.openai.com'),
+          _text('Model', _llmModel, hint: _cfg.llmModel),
+          _stepper('Scenes', _cfg.sceneCount, 3, 8, (v) =>
+              setState(() { _cfg = _cfg.copyWith(sceneCount: v); _dirty = true; })),
           const SizedBox(height: 24),
-          FilledButton.icon(
-            onPressed: _save,
-            icon: const Icon(Icons.save),
-            label: const Text('Save Settings'),
+
+          // ── Image ────────────────────────────────────────────────────────
+          _section('Image Generation'),
+          _chips<ImageProvider>(
+            label: 'Provider',
+            value: _cfg.imageProvider,
+            options: ImageProvider.values,
+            nameOf: (v) => switch (v) {
+              ImageProvider.dalle3 => 'DALL-E 3',
+              ImageProvider.stabilityAi => 'Stability AI',
+              ImageProvider.flux => 'fal.ai Flux',
+            },
+            onChanged: (v) => setState(() {
+              _cfg = _cfg.copyWith(
+                imageProvider: v,
+                imageModel: switch (v) {
+                  ImageProvider.dalle3 => 'dall-e-3',
+                  ImageProvider.stabilityAi => 'sd3-medium',
+                  ImageProvider.flux => 'fal-ai/flux/schnell',
+                },
+              );
+              _imageModel.text = _cfg.imageModel;
+              _dirty = true;
+            }),
           ),
-          const SizedBox(height: 8),
-          Text(
-            'OpenRouter free tier: openai/gpt-4o-mini\n'
-            'Get a Pexels key free at pexels.com/api',
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: theme.colorScheme.outline),
-            textAlign: TextAlign.center,
+          _key('API Key', _imageKey,
+              hint: switch (_cfg.imageProvider) {
+                ImageProvider.dalle3 => 'sk-…  platform.openai.com',
+                ImageProvider.stabilityAi => 'sk-…  platform.stability.ai',
+                ImageProvider.flux => 'your-key  fal.ai/dashboard',
+              }),
+          _text('Model', _imageModel, hint: _cfg.imageModel),
+          const SizedBox(height: 24),
+
+          // ── TTS ──────────────────────────────────────────────────────────
+          _section('Voice (TTS)'),
+          _chips<TtsProvider>(
+            label: 'Provider',
+            value: _cfg.ttsProvider,
+            options: TtsProvider.values,
+            nameOf: (v) => switch (v) {
+              TtsProvider.elevenLabs => 'ElevenLabs',
+              TtsProvider.openaiTts => 'OpenAI TTS',
+              TtsProvider.device => 'On-Device (free)',
+            },
+            onChanged: (v) =>
+                setState(() { _cfg = _cfg.copyWith(ttsProvider: v); _dirty = true; }),
           ),
+          if (_cfg.ttsProvider != TtsProvider.device) ...[
+            _key('API Key', _ttsKey,
+                hint: _cfg.ttsProvider == TtsProvider.elevenLabs
+                    ? 'xi-…  elevenlabs.io'
+                    : 'sk-…  platform.openai.com'),
+            if (_cfg.ttsProvider == TtsProvider.elevenLabs)
+              _text('Voice ID', _ttsVoiceId, hint: 'EXAVITQu4vr4xnSDxMaL'),
+            if (_cfg.ttsProvider == TtsProvider.openaiTts)
+              _text('Voice', _ttsVoice,
+                  hint: 'nova | alloy | echo | fable | onyx | shimmer'),
+          ],
+          const SizedBox(height: 24),
+
+          // ── Video ────────────────────────────────────────────────────────
+          _section('Video'),
+          SwitchListTile(
+            title: const Text('Subtitles'),
+            subtitle: const Text('Burn captions into video'),
+            value: _cfg.subtitlesEnabled,
+            onChanged: (v) =>
+                setState(() { _cfg = _cfg.copyWith(subtitlesEnabled: v); _dirty = true; }),
+          ),
+          SwitchListTile(
+            title: const Text('Ken Burns effect'),
+            subtitle: const Text('Slow zoom on each image'),
+            value: _cfg.kenBurnsEnabled,
+            onChanged: (v) =>
+                setState(() { _cfg = _cfg.copyWith(kenBurnsEnabled: v); _dirty = true; }),
+          ),
+          const SizedBox(height: 32),
+          FilledButton(onPressed: _dirty ? _save : null, child: const Text('Save')),
+          const SizedBox(height: 24),
         ],
       ),
     );
   }
 
-  Widget _section(String title, List<Widget> children) {
-    return Card(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title,
-                style: Theme.of(context)
-                    .textTheme
-                    .titleSmall
-                    ?.copyWith(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            ...children,
-          ],
-        ),
-      ),
-    );
-  }
+  Widget _section(String t) => Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Text(t,
+            style: Theme.of(context)
+                .textTheme
+                .titleSmall
+                ?.copyWith(color: Theme.of(context).colorScheme.primary)),
+      );
 
-  Widget _field(
-    String label,
-    TextEditingController ctrl, {
-    bool obscure = false,
-    String? hint,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: TextField(
-        controller: ctrl,
-        obscureText: obscure,
-        decoration: InputDecoration(
-          labelText: label,
-          hintText: hint,
-          isDense: true,
-          border: const OutlineInputBorder(),
+  Widget _key(String label, TextEditingController c, {String hint = ''}) =>
+      Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: TextField(
+          controller: c,
+          obscureText: true,
+          onChanged: (_) => _mark(),
+          decoration: InputDecoration(
+              labelText: label, hintText: hint, border: const OutlineInputBorder()),
         ),
-      ),
-    );
-  }
+      );
+
+  Widget _text(String label, TextEditingController c, {String hint = ''}) =>
+      Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: TextField(
+          controller: c,
+          onChanged: (_) => _mark(),
+          decoration: InputDecoration(
+              labelText: label, hintText: hint, border: const OutlineInputBorder()),
+        ),
+      );
+
+  Widget _stepper(String label, int value, int min, int max, ValueChanged<int> cb) =>
+      ListTile(
+        title: Text(label),
+        trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+          IconButton(
+              icon: const Icon(Icons.remove),
+              onPressed: value > min ? () => cb(value - 1) : null),
+          Text('$value', style: Theme.of(context).textTheme.titleMedium),
+          IconButton(
+              icon: const Icon(Icons.add),
+              onPressed: value < max ? () => cb(value + 1) : null),
+        ]),
+      );
+
+  Widget _chips<T>({
+    required String label,
+    required T value,
+    required List<T> options,
+    required String Function(T) nameOf,
+    required ValueChanged<T> onChanged,
+  }) =>
+      Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(label, style: Theme.of(context).textTheme.labelMedium),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 8,
+            children: options
+                .map((o) => ChoiceChip(
+                    label: Text(nameOf(o)),
+                    selected: o == value,
+                    onSelected: (_) => onChanged(o)))
+                .toList(),
+          ),
+        ]),
+      );
 }

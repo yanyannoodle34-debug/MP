@@ -9,151 +9,133 @@ class GenerateScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Generating…')),
-      body: Consumer<AppProvider>(
-        builder: (context, provider, _) {
-          final task = provider.currentTask;
-          if (task == null) return const SizedBox.shrink();
+    final task = context.watch<AppProvider>().currentTask;
+    if (task == null) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
-          return Column(
-            children: [
-              _ProgressHeader(task: task),
-              Expanded(child: _LogView(logs: task.logs)),
-              if (task.step == TaskStep.done)
-                _DoneBar(videoPath: task.outputPath!, onPreview: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          PreviewScreen(videoPath: task.outputPath!),
-                    ),
-                  );
-                }),
-              if (task.step == TaskStep.error)
-                _ErrorBar(message: task.errorMessage ?? 'Unknown error'),
-            ],
-          );
-        },
-      ),
-    );
-  }
-}
+    final isDone = task.step == TaskStep.done;
+    final isError = task.step == TaskStep.error;
 
-class _ProgressHeader extends StatelessWidget {
-  final VideoTask task;
-  const _ProgressHeader({required this.task});
-
-  static const _steps = [
-    (TaskStep.generatingScript, Icons.description, 'Script'),
-    (TaskStep.downloadingMaterials, Icons.download, 'Materials'),
-    (TaskStep.synthesizingAudio, Icons.record_voice_over, 'Audio'),
-    (TaskStep.composingVideo, Icons.movie_creation, 'Compose'),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final currentIdx = _steps.indexWhere((s) => s.$1 == task.step);
-
-    return Container(
-      color: theme.colorScheme.surfaceContainerHighest,
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          LinearProgressIndicator(
-            value: task.step.progress,
-            minHeight: 6,
-            borderRadius: BorderRadius.circular(3),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: List.generate(_steps.length, (i) {
-              final (step, icon, label) = _steps[i];
-              final done = currentIdx > i ||
-                  task.step == TaskStep.done;
-              final active = currentIdx == i;
-              return _StepDot(
-                icon: icon,
-                label: label,
-                done: done,
-                active: active,
-              );
-            }),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            task.step == TaskStep.error
-                ? '✗ ${task.errorMessage ?? "Error"}'
-                : task.step.label,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: task.step == TaskStep.error
-                  ? theme.colorScheme.error
+    return PopScope(
+      canPop: !task.step.isActive,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(task.topic, maxLines: 1, overflow: TextOverflow.ellipsis),
+          automaticallyImplyLeading: !task.step.isActive,
+        ),
+        body: Column(
+          children: [
+            // ── Overall progress bar ────────────────────────────────────────
+            LinearProgressIndicator(
+              value: isError ? 0 : task.step.progress,
+              color: isError ? Colors.red : null,
+              backgroundColor: isError
+                  ? Colors.red.withAlpha(40)
                   : null,
             ),
-            textAlign: TextAlign.center,
-          ),
-        ],
+
+            // ── Step chips ──────────────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: TaskStep.values
+                    .where((s) => s != TaskStep.idle)
+                    .map((s) => _StepChip(step: s, current: task.step))
+                    .toList(),
+              ),
+            ),
+
+            // ── Stage progress (within current step) ────────────────────────
+            if (task.step.isActive && task.stageProgress > 0)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(task.step.label,
+                        style: Theme.of(context).textTheme.bodySmall),
+                    const SizedBox(height: 4),
+                    LinearProgressIndicator(value: task.stageProgress),
+                  ],
+                ),
+              ),
+
+            // ── Log output ──────────────────────────────────────────────────
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: _LogView(logs: task.logs, isError: isError),
+              ),
+            ),
+
+            // ── Bottom actions ──────────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+              child: _BottomActions(task: task),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-class _StepDot extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final bool done;
-  final bool active;
-  const _StepDot(
-      {required this.icon,
-      required this.label,
-      required this.done,
-      required this.active});
+class _StepChip extends StatelessWidget {
+  final TaskStep step;
+  final TaskStep current;
+
+  const _StepChip({required this.step, required this.current});
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    Color bg;
-    Color fg;
-    if (done) {
-      bg = scheme.primary;
-      fg = scheme.onPrimary;
-    } else if (active) {
-      bg = scheme.secondaryContainer;
-      fg = scheme.onSecondaryContainer;
+    final cs = Theme.of(context).colorScheme;
+    final isDone = step.index < current.index;
+    final isActive = step == current;
+    final isError = current == TaskStep.error && isActive;
+
+    Color bgColor;
+    Color fgColor;
+    Widget? icon;
+
+    if (isError) {
+      bgColor = cs.errorContainer;
+      fgColor = cs.onErrorContainer;
+      icon = Icon(Icons.error_outline, size: 14, color: fgColor);
+    } else if (isDone) {
+      bgColor = cs.primaryContainer;
+      fgColor = cs.onPrimaryContainer;
+      icon = Icon(Icons.check, size: 14, color: fgColor);
+    } else if (isActive) {
+      bgColor = cs.primary;
+      fgColor = cs.onPrimary;
+      icon = SizedBox(
+        width: 14,
+        height: 14,
+        child: CircularProgressIndicator(strokeWidth: 2, color: fgColor),
+      );
     } else {
-      bg = scheme.surfaceContainerLow;
-      fg = scheme.onSurfaceVariant;
+      bgColor = cs.surfaceContainerHighest;
+      fgColor = cs.onSurfaceVariant;
+      icon = null;
     }
 
-    return Column(
-      children: [
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 300),
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
-          child: active
-              ? Padding(
-                  padding: const EdgeInsets.all(10),
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2.5,
-                    color: fg,
-                  ),
-                )
-              : Icon(done ? Icons.check : icon, color: fg, size: 20),
-        ),
-        const SizedBox(height: 4),
-        Text(label, style: TextStyle(fontSize: 10, color: fg)),
-      ],
+    return Chip(
+      avatar: icon,
+      label: Text(step.label, style: TextStyle(color: fgColor, fontSize: 12)),
+      backgroundColor: bgColor,
+      side: BorderSide.none,
+      visualDensity: VisualDensity.compact,
+      padding: EdgeInsets.zero,
     );
   }
 }
 
 class _LogView extends StatefulWidget {
   final List<String> logs;
-  const _LogView({required this.logs});
+  final bool isError;
+
+  const _LogView({required this.logs, required this.isError});
 
   @override
   State<_LogView> createState() => _LogViewState();
@@ -168,36 +150,14 @@ class _LogViewState extends State<_LogView> {
     if (widget.logs.length != old.logs.length) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (_scroll.hasClients) {
-          _scroll.animateTo(_scroll.position.maxScrollExtent,
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeOut);
+          _scroll.animateTo(
+            _scroll.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+          );
         }
       });
     }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      color: theme.colorScheme.surface,
-      child: ListView.builder(
-        controller: _scroll,
-        padding: const EdgeInsets.all(12),
-        itemCount: widget.logs.length,
-        itemBuilder: (_, i) => Padding(
-          padding: const EdgeInsets.only(bottom: 4),
-          child: Text(
-            '› ${widget.logs[i]}',
-            style: TextStyle(
-              fontFamily: 'monospace',
-              fontSize: 12,
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ),
-      ),
-    );
   }
 
   @override
@@ -205,44 +165,108 @@ class _LogViewState extends State<_LogView> {
     _scroll.dispose();
     super.dispose();
   }
-}
-
-class _DoneBar extends StatelessWidget {
-  final String videoPath;
-  final VoidCallback onPreview;
-  const _DoneBar({required this.videoPath, required this.onPreview});
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: FilledButton.icon(
-          onPressed: onPreview,
-          icon: const Icon(Icons.play_circle),
-          label: const Text('Preview & Save Video'),
-          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
-        ),
+    final cs = Theme.of(context).colorScheme;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withAlpha(80),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      padding: const EdgeInsets.all(12),
+      child: ListView.builder(
+        controller: _scroll,
+        itemCount: widget.logs.length,
+        itemBuilder: (_, i) {
+          final log = widget.logs[i];
+          final isLast = i == widget.logs.length - 1;
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Text(
+              log,
+              style: TextStyle(
+                fontSize: 12,
+                fontFamily: 'monospace',
+                color: isLast && widget.isError
+                    ? cs.error
+                    : isLast
+                        ? cs.primary
+                        : cs.onSurfaceVariant,
+              ),
+            ),
+          );
+        },
       ),
     );
   }
 }
 
-class _ErrorBar extends StatelessWidget {
-  final String message;
-  const _ErrorBar({required this.message});
+class _BottomActions extends StatelessWidget {
+  final VideoTask task;
+
+  const _BottomActions({required this.task});
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Text(
-          message,
-          style: TextStyle(color: Theme.of(context).colorScheme.error),
-          textAlign: TextAlign.center,
-        ),
-      ),
+    if (task.step == TaskStep.done && task.outputPath != null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          FilledButton.icon(
+            icon: const Icon(Icons.play_circle_outline),
+            label: const Text('Watch Video'),
+            onPressed: () {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => PreviewScreen(videoPath: task.outputPath!),
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton(
+            onPressed: () {
+              context.read<AppProvider>().reset();
+              Navigator.pop(context);
+            },
+            child: const Text('Make Another'),
+          ),
+        ],
+      );
+    }
+
+    if (task.step == TaskStep.error) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            task.errorMessage ?? 'Unknown error',
+            style: TextStyle(color: Theme.of(context).colorScheme.error, fontSize: 13),
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton(
+            onPressed: () {
+              context.read<AppProvider>().reset();
+              Navigator.pop(context);
+            },
+            child: const Text('Go back'),
+          ),
+        ],
+      );
+    }
+
+    return Text(
+      task.step.label,
+      style: Theme.of(context)
+          .textTheme
+          .bodySmall
+          ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
+      textAlign: TextAlign.center,
     );
   }
 }

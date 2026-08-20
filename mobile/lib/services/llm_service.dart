@@ -1,70 +1,85 @@
 import 'dart:convert';
 import 'package:dio/dio.dart';
 import '../models/app_config.dart';
-import '../models/video_task.dart';
+import '../models/scene.dart';
 
 class LlmService {
   final Dio _dio = Dio();
 
-  Future<ScriptResult> generateScript(String topic, AppConfig cfg) async {
-    final wordTarget = (cfg.videoDurationSec * 2.2).round(); // ~2.2 words/sec
+  Future<VideoScript> generateScript(String topic, AppConfig cfg) async {
+    final n = cfg.sceneCount;
 
-    final systemPrompt = '''
-You are a short-form video scriptwriter. Write an engaging narration script and
-pick relevant stock-video search terms. Return ONLY valid JSON — no markdown.
+    const system = '''
+You are a short-form video scriptwriter. Write an engaging ${n}-scene narration
+and craft a vivid image-generation prompt for each scene.
+Return ONLY valid JSON — no markdown, no extra keys.
 ''';
 
-    final userPrompt = '''
+    final user = '''
 Topic: "$topic"
-Target duration: ${cfg.videoDurationSec} seconds (~$wordTarget words at normal pace)
+Number of scenes: $n
 
-Return JSON with exactly these keys:
+Return JSON with exactly this structure:
 {
-  "script": "<narration — plain sentences, no stage directions>",
-  "terms":  ["<keyword1>", "<keyword2>", "<keyword3>", "<keyword4>", "<keyword5>"]
+  "title": "<short video title>",
+  "scenes": [
+    {
+      "narration": "<10–30 words of spoken narration for this scene>",
+      "image_prompt": "<detailed visual prompt for an AI image generator, photorealistic, cinematic>"
+    }
+  ]
 }
 
 Rules:
-- Script must be natural spoken-word prose.
-- Terms must be specific, visual, and searchable as stock-video queries.
+- Each narration is natural spoken prose, no stage directions.
+- Each image_prompt is vivid, specific, ~20 words, appended with "cinematic 4K 9:16 portrait".
+- No special characters in narration that break TTS.
 ''';
 
-    final response = await _dio.post(
+    final resp = await _dio.post(
       '${cfg.llmBaseUrl}/chat/completions',
       options: Options(
         headers: {
           'Authorization': 'Bearer ${cfg.llmApiKey}',
           'Content-Type': 'application/json',
-          'HTTP-Referer': 'https://github.com/yanyannoodle34-debug/MP',
-          'X-Title': 'MoneyPrinterMobile',
+          if (cfg.llmProvider == LlmProvider.openrouter) ...{
+            'HTTP-Referer': 'https://github.com/yanyannoodle34-debug/MP',
+            'X-Title': 'CloudAI Creator',
+          },
         },
-        receiveTimeout: const Duration(seconds: 60),
+        receiveTimeout: const Duration(seconds: 90),
+        sendTimeout: const Duration(seconds: 30),
       ),
       data: {
         'model': cfg.llmModel,
         'messages': [
-          {'role': 'system', 'content': systemPrompt},
-          {'role': 'user', 'content': userPrompt},
+          {'role': 'system', 'content': system},
+          {'role': 'user', 'content': user},
         ],
-        'temperature': 0.7,
-        'max_tokens': 1024,
+        'temperature': 0.75,
+        'max_tokens': 2048,
         'response_format': {'type': 'json_object'},
       },
     );
 
-    final content =
-        response.data['choices'][0]['message']['content'] as String;
-
+    final content = resp.data['choices'][0]['message']['content'] as String;
     final Map<String, dynamic> parsed = jsonDecode(content);
-    final script = parsed['script'] as String? ?? '';
-    final rawTerms = parsed['terms'];
-    final terms = rawTerms is List
-        ? rawTerms.map((e) => e.toString()).toList()
-        : <String>[];
 
-    if (script.isEmpty) throw Exception('LLM returned empty script.');
-    if (terms.isEmpty) throw Exception('LLM returned no search terms.');
+    final title = parsed['title'] as String? ?? topic;
+    final rawScenes = parsed['scenes'] as List?;
+    if (rawScenes == null || rawScenes.isEmpty) {
+      throw Exception('LLM returned no scenes.');
+    }
 
-    return ScriptResult(script: script, searchTerms: terms);
+    final scenes = rawScenes.asMap().entries.map((e) {
+      final s = e.value as Map<String, dynamic>;
+      return Scene(
+        index: e.key,
+        narration: s['narration'] as String? ?? '',
+        imagePrompt: s['image_prompt'] as String? ?? '',
+      );
+    }).toList();
+
+    return VideoScript(title: title, scenes: scenes);
   }
 }

@@ -1,14 +1,12 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import '../models/app_config.dart';
+import '../models/scene.dart';
 import '../models/video_task.dart';
 import '../services/llm_service.dart';
-import '../services/material_service.dart';
-import '../services/subtitle_service.dart';
+import '../services/image_service.dart';
 import '../services/tts_service.dart';
 import '../services/video_service.dart';
 
@@ -17,15 +15,14 @@ class AppProvider extends ChangeNotifier {
   VideoTask? currentTask;
 
   final _llm = LlmService();
-  final _materials = MaterialService();
-  final _tts = TtsService();
-  final _subtitles = SubtitleService();
-  final _video = VideoService();
+  final _imageService = ImageService();
+  final _ttsService = TtsService();
+  final _videoService = VideoService();
   final _uuid = const Uuid();
 
   Future<void> loadConfig() async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString('app_config');
+    final raw = prefs.getString('app_config_v2');
     if (raw != null) {
       try {
         config = AppConfig.fromJson(jsonDecode(raw) as Map<String, dynamic>);
@@ -37,98 +34,121 @@ class AppProvider extends ChangeNotifier {
   Future<void> saveConfig(AppConfig cfg) async {
     config = cfg;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('app_config', jsonEncode(cfg.toJson()));
+    await prefs.setString('app_config_v2', jsonEncode(cfg.toJson()));
     notifyListeners();
   }
 
-  void _updateTask(VideoTask t) {
+  void _update(VideoTask t) {
     currentTask = t;
     notifyListeners();
   }
 
   Future<void> generate(String topic) async {
     final task = VideoTask(id: _uuid.v4(), topic: topic);
-    _updateTask(task);
+    _update(task);
 
     try {
-      // ── 1. Script ───────────────────────────────────────────────────────────
-      _updateTask(task
+      // ── 1. Script ──────────────────────────────────────────────────────────
+      _update(task
           .copyWith(step: TaskStep.generatingScript)
-          .addLog('Calling LLM: "${config.llmModel}"…'));
+          .addLog('Calling LLM (${config.llmModel})…'));
 
-      if (config.llmApiKey.isEmpty) {
-        throw Exception('LLM API key is not set. Go to Settings.');
+      _validateKey('LLM API key', config.llmApiKey);
+
+      final script = await _llm.generateScript(topic, config);
+      _update(currentTask!
+          .addLog('Script: "${script.title}" — ${script.scenes.length} scenes'));
+
+      // ── 2. Images + Audio (parallel per scene) ─────────────────────────────
+      _validateKey('Image API key', config.imageApiKey);
+      if (config.ttsProvider != TtsProvider.device) {
+        _validateKey('TTS API key', config.ttsApiKey);
       }
 
-      final scriptResult = await _llm.generateScript(topic, config);
-      _updateTask(currentTask!
-          .copyWith(script: scriptResult.script)
-          .addLog('Script ready (${scriptResult.script.split(' ').length} words).')
-          .addLog('Search terms: ${scriptResult.searchTerms.join(', ')}'));
+      _update(currentTask!
+          .copyWith(step: TaskStep.generatingImages)
+          .addLog('Generating ${script.scenes.length} images + audio in parallel…'));
 
-      // ── 2. Materials ────────────────────────────────────────────────────────
-      _updateTask(currentTask!
-          .copyWith(step: TaskStep.downloadingMaterials)
-          .addLog('Fetching stock videos from Pexels…'));
+      await _generateSceneAssets(script.scenes);
+      _update(currentTask!
+          .addLog('All scene assets ready.'));
 
-      if (config.pexelsApiKey.isEmpty) {
-        throw Exception('Pexels API key is not set. Go to Settings.');
-      }
-
-      final clipPaths = await _materials.fetchAndDownload(
-        scriptResult.searchTerms,
-        config,
-        onProgress: (p, log) {
-          _updateTask(currentTask!
-              .copyWith(materialProgress: p)
-              .addLog(log));
-        },
-      );
-      _updateTask(currentTask!.addLog('Downloaded ${clipPaths.length} clip(s).'));
-
-      // ── 3. TTS ──────────────────────────────────────────────────────────────
-      _updateTask(currentTask!
-          .copyWith(step: TaskStep.synthesizingAudio)
-          .addLog('Synthesizing audio on-device…'));
-
-      final audioPath =
-          await _tts.synthesizeToFile(scriptResult.script, config);
-      _updateTask(currentTask!.addLog('Audio ready: $audioPath'));
-
-      // ── 4. Subtitles ────────────────────────────────────────────────────────
-      final tmpDir = await getTemporaryDirectory();
-      final srtPath = '${tmpDir.path}/mpt_subs.srt';
-
-      // Probe audio duration for subtitle timing
-      final audioDur = config.videoDurationSec.toDouble();
-      final entries =
-          _subtitles.buildEntries(scriptResult.script, audioDur);
-      await File(srtPath).writeAsString(_subtitles.toSrt(entries));
-      _updateTask(currentTask!.addLog('Subtitle file written.'));
-
-      // ── 5. Compose ──────────────────────────────────────────────────────────
-      _updateTask(currentTask!
+      // ── 3. Compose video ───────────────────────────────────────────────────
+      _update(currentTask!
           .copyWith(step: TaskStep.composingVideo)
-          .addLog('Starting ffmpeg composition…'));
+          .addLog('Starting FFmpeg composition…'));
 
-      final outputPath = await _video.compose(
-        clipPaths: clipPaths,
-        audioPath: audioPath,
-        srtPath: srtPath,
+      final outputPath = await _videoService.compose(
+        scenes: script.scenes,
         cfg: config,
-        onLog: (log) => _updateTask(currentTask!.addLog(log)),
+        onProgress: (p, log) =>
+            _update(currentTask!.copyWith(stageProgress: p).addLog(log)),
       );
 
-      _updateTask(currentTask!
+      _update(currentTask!
           .copyWith(step: TaskStep.done, outputPath: outputPath)
-          .addLog('✓ Video saved to $outputPath'));
+          .addLog('Done! Saved to $outputPath'));
     } catch (e, st) {
-      _updateTask(currentTask!
-          .copyWith(
-            step: TaskStep.error,
-            errorMessage: e.toString(),
-          )
-          .addLog('✗ Error: $e\n$st'));
+      _update(currentTask!.copyWith(
+        step: TaskStep.error,
+        errorMessage: e.toString(),
+      ).addLog('Error: $e\n$st'));
+    } finally {
+      await _ttsService.dispose();
+    }
+  }
+
+  Future<void> _generateSceneAssets(List<Scene> scenes) async {
+    final total = scenes.length;
+    int done = 0;
+
+    // Run image + audio in parallel for each scene, but cap concurrency at 3
+    const maxConcurrent = 3;
+    final futures = <Future<void>>[];
+
+    for (var i = 0; i < total; i++) {
+      final scene = scenes[i];
+
+      if (futures.length >= maxConcurrent) {
+        await futures.removeAt(0);
+      }
+
+      futures.add(_generateOneScene(scene).then((_) {
+        done++;
+        _update(currentTask!
+            .copyWith(stageProgress: done / total)
+            .addLog('Scene ${scene.index + 1}/$total assets ready.'));
+      }));
+    }
+
+    await Future.wait(futures);
+  }
+
+  Future<void> _generateOneScene(Scene scene) async {
+    final i = scene.index;
+    _update(currentTask!.addLog('Scene ${i + 1}: requesting image + audio…'));
+
+    final results = await Future.wait([
+      _imageService.generate(scene.imagePrompt, i, config),
+      _ttsService.synthesize(scene.narration, i, config),
+    ]);
+
+    scene.imagePath = results[0] as String;
+    final audioResult = results[1] as ({String path, double duration});
+    scene.audioPath = audioResult.path;
+
+    // Use FFprobe for accurate audio duration if available
+    try {
+      final probed = await _videoService.probeDuration(audioResult.path);
+      scene.audioDuration = probed > 0 ? probed : audioResult.duration;
+    } catch (_) {
+      scene.audioDuration = audioResult.duration;
+    }
+  }
+
+  void _validateKey(String name, String key) {
+    if (key.trim().isEmpty) {
+      throw Exception('$name is not set. Open Settings ⚙');
     }
   }
 
