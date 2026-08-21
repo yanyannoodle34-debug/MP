@@ -10,8 +10,11 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # Video processing (full GPL build: x264, libass subtitles, fdk-aac)
-  ffmpeg_kit_flutter_full_gpl: ^6.0.3
+  # Video processing — maintained community fork of arthenica/ffmpeg-kit
+  # (original ffmpeg_kit_flutter_full_gpl's native lib was pulled from mavenCentral
+  # when arthenica archived the project). This fork republishes the artifact
+  # and keeps the same API surface (FFmpegKit.execute, FFprobeKit, ReturnCode).
+  ffmpeg_kit_flutter_new: ^4.6.2
 
   # HTTP client
   dio: ^5.4.3
