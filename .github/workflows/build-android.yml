@@ -11,6 +11,11 @@ on:
     tags:
       - 'v*'
 
+# Required so the built-in GITHUB_TOKEN can create a GitHub Release
+# and upload the APK asset (default is contents:read only).
+permissions:
+  contents: write
+
 jobs:
   build:
     name: Build Flutter APK
