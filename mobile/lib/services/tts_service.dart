@@ -4,12 +4,14 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:web_socket_channel/io.dart';
 import '../models/app_config.dart';
 
 class TtsService {
   final Dio _dio = Dio();
+  FlutterTts? _deviceTts;
 
   /// Synthesizes [text] to an audio file. Returns local path + duration (seconds).
   Future<({String path, double duration})> synthesize(
@@ -18,20 +20,26 @@ class TtsService {
     AppConfig cfg,
   ) async {
     switch (cfg.ttsProvider) {
-      case TtsProvider.edgeTts:
       case TtsProvider.deviceTts:
-        // Try Edge TTS first (Microsoft neural voices, free, high quality).
-        // Fall back to StreamElements (Amazon Polly, free, public) if Edge fails
-        // — this makes the "free" option always work.
+        // Bulletproof free option — uses the phone's built-in TTS engine.
+        return _deviceSynthesize(text, sceneIndex, cfg);
+
+      case TtsProvider.edgeTts:
+        // Try Edge TTS (Microsoft neural, best quality). If that fails,
+        // fall back to device TTS so the user always gets audio. Both
+        // errors surface so the user knows what happened.
         try {
           return await _edgeTts(text, sceneIndex, cfg);
-        } catch (e) {
+        } catch (edgeErr) {
           try {
-            return await _streamElementsTts(text, sceneIndex, cfg);
-          } catch (_) {
-            rethrow; // surface the original edge error, more informative
+            return await _deviceSynthesize(text, sceneIndex, cfg);
+          } catch (deviceErr) {
+            throw Exception(
+              'Edge TTS failed: $edgeErr. Device TTS also failed: $deviceErr',
+            );
           }
         }
+
       case TtsProvider.azureTts:
         return _azureTts(text, sceneIndex, cfg);
       case TtsProvider.openaiTts:
@@ -39,6 +47,70 @@ class TtsService {
       case TtsProvider.elevenLabs:
         return _elevenLabs(text, sceneIndex, cfg);
     }
+  }
+
+  // ── Device TTS (rock-solid, offline, uses phone's built-in engine) ──────
+
+  Future<({String path, double duration})> _deviceSynthesize(
+    String text,
+    int idx,
+    AppConfig cfg,
+  ) async {
+    _deviceTts ??= FlutterTts();
+    final tts = _deviceTts!;
+
+    // Map our neural voice ids to language codes so device TTS uses the right voice.
+    final lang = _langFromVoice(cfg.ttsVoiceId);
+    await tts.setLanguage(lang);
+    await tts.setSpeechRate(0.5); // 0.5 = normal on Android
+    await tts.setVolume(1.0);
+    await tts.setPitch(1.0);
+    await tts.awaitSynthCompletion(true);
+    try {
+      await tts.setSharedInstance(true); // no-op on Android, needed on iOS
+    } catch (_) {}
+
+    final tmpDir = await getTemporaryDirectory();
+    final fileName = 'scene_${idx}_audio.wav';
+    final fullPath = '${tmpDir.path}/$fileName';
+
+    final f = File(fullPath);
+    if (await f.exists()) await f.delete();
+
+    // synthesizeToFile writes into the tmp dir, filename only on Android.
+    final result = await tts.synthesizeToFile(text, fileName);
+    if (result != 1) {
+      throw Exception(
+          'Device TTS returned $result. Language "$lang" may not be installed. '
+          'Install voices in Android → Settings → Languages → Text-to-speech.');
+    }
+
+    // Some Android engines write to the app-specific external dir instead of tmp.
+    // Search likely locations.
+    if (!await File(fullPath).exists()) {
+      final ext = await getExternalStorageDirectory();
+      final alt = '${ext?.path}/$fileName';
+      if (await File(alt).exists()) {
+        await File(alt).rename(fullPath);
+      }
+    }
+
+    if (!await File(fullPath).exists() || (await File(fullPath).length()) < 100) {
+      throw Exception(
+          'Device TTS produced no audio file. Install a TTS engine or voice pack.');
+    }
+
+    // Estimate duration from word count (device TTS doesn't return it).
+    final wordCount = text.trim().split(RegExp(r'\s+')).length;
+    final estimated = (wordCount / 2.5).clamp(1.0, 60.0); // ~2.5 wps at normal
+    return (path: fullPath, duration: estimated);
+  }
+
+  String _langFromVoice(String voiceId) {
+    // "en-US-AriaNeural" → "en-US"
+    final parts = voiceId.split('-');
+    if (parts.length >= 2) return '${parts[0]}-${parts[1]}';
+    return 'en-US';
   }
 
   // ── Edge TTS (free, no key) ──────────────────────────────────────────────
@@ -165,43 +237,6 @@ class TtsService {
     }
 
     return _saveAudio(chunks, idx, 'mp3');
-  }
-
-  // ── StreamElements TTS (free fallback, no key) ───────────────────────────
-  // Public API used by many streaming tools; wraps Amazon Polly voices.
-  // Maps our neural-voice ids to Polly equivalents.
-
-  static const _polyMap = {
-    'en-US-AriaNeural': 'Salli',
-    'en-US-GuyNeural': 'Matthew',
-    'en-US-JennyNeural': 'Joanna',
-    'en-US-DavisNeural': 'Matthew',
-    'en-GB-SoniaNeural': 'Emma',
-    'en-GB-RyanNeural': 'Brian',
-    'en-AU-NatashaNeural': 'Nicole',
-    'zh-CN-XiaoxiaoNeural': 'Zhiyu',
-    'zh-CN-YunxiNeural': 'Zhiyu',
-    'ja-JP-NanamiNeural': 'Mizuki',
-    'es-ES-ElviraNeural': 'Conchita',
-    'fr-FR-DeniseNeural': 'Celine',
-    'de-DE-KatjaNeural': 'Marlene',
-  };
-
-  Future<({String path, double duration})> _streamElementsTts(
-    String text,
-    int idx,
-    AppConfig cfg,
-  ) async {
-    final voice = _polyMap[cfg.ttsVoiceId] ?? 'Salli';
-    final resp = await _dio.get(
-      'https://api.streamelements.com/kappa/v2/speech',
-      queryParameters: {'voice': voice, 'text': text},
-      options: Options(
-        responseType: ResponseType.bytes,
-        receiveTimeout: const Duration(minutes: 2),
-      ),
-    );
-    return _saveAudio(resp.data as List<int>, idx, 'mp3');
   }
 
   // ── Azure TTS ────────────────────────────────────────────────────────────
@@ -348,15 +383,22 @@ class TtsService {
   Future<String?> testKey(AppConfig cfg) async {
     try {
       switch (cfg.ttsProvider) {
-        case TtsProvider.edgeTts:
         case TtsProvider.deviceTts:
-          // Do a tiny real synthesis to confirm connectivity end-to-end.
           try {
-            await synthesize('Hello.', 999, cfg)
-                .timeout(const Duration(seconds: 30));
+            await _deviceSynthesize('Hello.', 999, cfg)
+                .timeout(const Duration(seconds: 20));
             return null;
           } catch (e) {
             return e.toString();
+          }
+
+        case TtsProvider.edgeTts:
+          try {
+            await _edgeTts('Hello.', 999, cfg)
+                .timeout(const Duration(seconds: 30));
+            return null;
+          } catch (e) {
+            return 'Edge TTS: $e (will fall back to device TTS at runtime)';
           }
 
         case TtsProvider.elevenLabs:
@@ -416,7 +458,12 @@ class TtsService {
     return (path: path, duration: estimatedSec.clamp(1.0, 60.0));
   }
 
-  Future<void> dispose() async {}
+  Future<void> dispose() async {
+    try {
+      await _deviceTts?.stop();
+    } catch (_) {}
+    _deviceTts = null;
+  }
 
   String _cleanKey(String raw) {
     var k = raw.trim();

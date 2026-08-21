@@ -98,8 +98,8 @@ extension VisualSourceInfo on VisualSource {
 
 extension TtsProviderInfo on TtsProvider {
   String get displayName => switch (this) {
-        TtsProvider.edgeTts => 'Edge TTS (free)',
-        TtsProvider.deviceTts => 'On-Device (free)',
+        TtsProvider.deviceTts => 'On-Device (free, offline)',
+        TtsProvider.edgeTts => 'Edge TTS (free, online)',
         TtsProvider.azureTts => 'Azure TTS',
         TtsProvider.openaiTts => 'OpenAI TTS',
         TtsProvider.elevenLabs => 'ElevenLabs',
@@ -148,7 +148,7 @@ class AppConfig {
     this.visualSource = VisualSource.pexels,
     this.visualApiKey = '',
     this.visualModel = '',
-    this.ttsProvider = TtsProvider.edgeTts,
+    this.ttsProvider = TtsProvider.deviceTts,
     this.ttsApiKey = '',
     this.ttsVoiceId = 'en-US-AriaNeural',
     this.ttsVoice = 'nova',
@@ -226,7 +226,7 @@ class AppConfig {
         visualModel: j['visualModel'] as String? ?? '',
         ttsProvider: TtsProvider.values.firstWhere(
           (e) => e.name == j['ttsProvider'],
-          orElse: () => TtsProvider.edgeTts,
+          orElse: () => TtsProvider.deviceTts,
         ),
         ttsApiKey: j['ttsApiKey'] as String? ?? '',
         ttsVoiceId: j['ttsVoiceId'] as String? ?? 'en-US-AriaNeural',
