@@ -40,6 +40,8 @@ class TtsService {
           }
         }
 
+      case TtsProvider.geminiTts:
+        return _geminiTts(text, sceneIndex, cfg);
       case TtsProvider.azureTts:
         return _azureTts(text, sceneIndex, cfg);
       case TtsProvider.openaiTts:
@@ -47,6 +49,101 @@ class TtsService {
       case TtsProvider.elevenLabs:
         return _elevenLabs(text, sceneIndex, cfg);
     }
+  }
+
+  // ── Gemini TTS ────────────────────────────────────────────────────────────
+  // Returns base64 raw PCM (24kHz mono 16-bit). We wrap in a WAV header
+  // so FFmpeg's decoder accepts it without extra flags.
+
+  Future<({String path, double duration})> _geminiTts(
+    String text,
+    int idx,
+    AppConfig cfg,
+  ) async {
+    final voice = cfg.ttsVoiceId.isNotEmpty ? cfg.ttsVoiceId : 'Kore';
+    final key = _cleanKey(cfg.ttsApiKey);
+
+    final resp = await _dio.post(
+      'https://generativelanguage.googleapis.com/v1beta/models/'
+      'gemini-2.5-flash-preview-tts:generateContent',
+      queryParameters: {'key': key},
+      options: Options(
+        headers: {'Content-Type': 'application/json'},
+        receiveTimeout: const Duration(minutes: 2),
+        validateStatus: (_) => true,
+      ),
+      data: {
+        'contents': [
+          {'parts': [{'text': text}]}
+        ],
+        'generationConfig': {
+          'responseModalities': ['AUDIO'],
+          'speechConfig': {
+            'voiceConfig': {
+              'prebuiltVoiceConfig': {'voiceName': voice},
+            }
+          }
+        }
+      },
+    );
+
+    if (resp.statusCode != 200) {
+      throw Exception('Gemini TTS HTTP ${resp.statusCode}: ${_err(resp.data)}');
+    }
+
+    final parts = ((resp.data['candidates'] as List?)?.first
+            as Map<String, dynamic>?)?['content']?['parts'] as List?;
+    final inlineData = parts?.first['inlineData'] as Map<String, dynamic>?;
+    final b64 = inlineData?['data'] as String?;
+    if (b64 == null || b64.isEmpty) {
+      throw Exception('Gemini TTS returned no audio: ${resp.data}');
+    }
+
+    final mime = (inlineData?['mimeType'] as String?) ?? 'audio/pcm;rate=24000';
+    final sampleRate = _parseSampleRate(mime, fallback: 24000);
+    final pcm = base64Decode(b64);
+    final wav = _pcmToWav(pcm, sampleRate: sampleRate);
+
+    final tmpDir = await getTemporaryDirectory();
+    final path = '${tmpDir.path}/scene_${idx}_audio.wav';
+    await File(path).writeAsBytes(wav);
+
+    final durSec = pcm.length / (sampleRate * 2); // 16-bit mono
+    return (path: path, duration: durSec.clamp(1.0, 60.0));
+  }
+
+  int _parseSampleRate(String mime, {required int fallback}) {
+    final m = RegExp(r'rate=(\d+)').firstMatch(mime);
+    return m != null ? int.tryParse(m.group(1)!) ?? fallback : fallback;
+  }
+
+  /// Wraps 16-bit PCM in a WAV RIFF container so audio players/decoders accept it.
+  Uint8List _pcmToWav(List<int> pcm, {required int sampleRate, int channels = 1}) {
+    final bitsPerSample = 16;
+    final byteRate = sampleRate * channels * bitsPerSample ~/ 8;
+    final blockAlign = channels * bitsPerSample ~/ 8;
+    final dataSize = pcm.length;
+    final fileSize = 36 + dataSize;
+
+    final b = BytesBuilder();
+    void write32(int v) => b.add([v & 0xFF, (v >> 8) & 0xFF, (v >> 16) & 0xFF, (v >> 24) & 0xFF]);
+    void write16(int v) => b.add([v & 0xFF, (v >> 8) & 0xFF]);
+
+    b.add(utf8.encode('RIFF'));
+    write32(fileSize);
+    b.add(utf8.encode('WAVE'));
+    b.add(utf8.encode('fmt '));
+    write32(16);                    // fmt chunk size
+    write16(1);                     // PCM format
+    write16(channels);
+    write32(sampleRate);
+    write32(byteRate);
+    write16(blockAlign);
+    write16(bitsPerSample);
+    b.add(utf8.encode('data'));
+    write32(dataSize);
+    b.add(pcm);
+    return b.toBytes();
   }
 
   // ── Device TTS (rock-solid, offline, uses phone's built-in engine) ──────
@@ -355,6 +452,20 @@ class TtsService {
           (id: 'de-DE-KatjaNeural', name: 'Katja (DE, F)'),
         ];
 
+      case TtsProvider.geminiTts:
+        return const [
+          (id: 'Kore', name: 'Kore (firm)'),
+          (id: 'Puck', name: 'Puck (upbeat)'),
+          (id: 'Charon', name: 'Charon (informative)'),
+          (id: 'Fenrir', name: 'Fenrir (excitable)'),
+          (id: 'Aoede', name: 'Aoede (breezy)'),
+          (id: 'Leda', name: 'Leda (youthful)'),
+          (id: 'Orus', name: 'Orus (firm)'),
+          (id: 'Zephyr', name: 'Zephyr (bright)'),
+          (id: 'Sulafat', name: 'Sulafat (warm)'),
+          (id: 'Enceladus', name: 'Enceladus (breathy)'),
+        ];
+
       case TtsProvider.openaiTts:
         const v = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'];
         return v.map((s) => (id: s, name: s)).toList();
@@ -422,6 +533,16 @@ class TtsService {
           );
           if (r.statusCode != 200) return 'HTTP ${r.statusCode}: ${_err(r.data)}';
           return null;
+
+        case TtsProvider.geminiTts:
+          // Do a tiny generation to fully validate key + voice pipeline.
+          try {
+            await _geminiTts('Hello.', 999, cfg)
+                .timeout(const Duration(seconds: 30));
+            return null;
+          } catch (e) {
+            return e.toString();
+          }
 
         case TtsProvider.azureTts:
           final region = cfg.azureRegion.trim().isNotEmpty ? cfg.azureRegion.trim() : 'eastus';

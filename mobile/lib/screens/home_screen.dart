@@ -3,7 +3,6 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
 import '../models/app_config.dart';
-import '../models/video_task.dart';
 import 'generate_screen.dart';
 import 'preview_screen.dart';
 import 'settings_screen.dart';
@@ -75,12 +74,11 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+      body: RefreshIndicator(
+        onRefresh: () => context.read<AppProvider>().refreshDrafts(),
+        child: ListView(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
           children: [
-            const SizedBox(height: 16),
             Text('AI Video Creator',
                 style: Theme.of(context)
                     .textTheme
@@ -88,7 +86,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ?.copyWith(fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             Text(
-              'Script + images + voice from cloud AI.\nRendered on your device.',
+              'Script + visuals + voice from cloud AI.\nRendered on your device.',
               style: Theme.of(context)
                   .textTheme
                   .bodyMedium
@@ -122,9 +120,158 @@ class _HomeScreenState extends State<HomeScreen> {
                   : const Icon(Icons.auto_awesome),
               label: const Text('Generate Video'),
             ),
-            const Spacer(),
-            _RecentVideoTile(),
+            const SizedBox(height: 28),
+            _DraftsSection(),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DraftsSection extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final drafts = context.watch<AppProvider>().drafts;
+    final cs = Theme.of(context).colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.movie_filter_outlined,
+                size: 18, color: cs.primary),
+            const SizedBox(width: 8),
+            Text('My Videos',
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    color: cs.primary, fontWeight: FontWeight.w700)),
+            const SizedBox(width: 8),
+            if (drafts.isNotEmpty)
+              Text('${drafts.length}',
+                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+            const Spacer(),
+            if (drafts.isNotEmpty)
+              TextButton.icon(
+                icon: const Icon(Icons.delete_sweep_outlined, size: 18),
+                label: const Text('Clear all'),
+                onPressed: () async {
+                  final ok = await showDialog<bool>(
+                    context: context,
+                    builder: (_) => AlertDialog(
+                      title: const Text('Delete all videos?'),
+                      content: Text(
+                          '${drafts.length} video file(s) will be permanently deleted from your device.'),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context, false),
+                          child: const Text('Cancel'),
+                        ),
+                        FilledButton(
+                          onPressed: () => Navigator.pop(context, true),
+                          style: FilledButton.styleFrom(backgroundColor: cs.error),
+                          child: const Text('Delete all'),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (ok == true && context.mounted) {
+                    await context.read<AppProvider>().clearAllDrafts();
+                  }
+                },
+                style: TextButton.styleFrom(foregroundColor: cs.error),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        if (drafts.isEmpty)
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest.withAlpha(60),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              children: [
+                Icon(Icons.videocam_off_outlined,
+                    size: 32, color: cs.outline),
+                const SizedBox(height: 8),
+                Text('No videos yet',
+                    style: TextStyle(color: cs.onSurfaceVariant)),
+                const SizedBox(height: 4),
+                Text('Generated videos will appear here.',
+                    style: TextStyle(
+                        fontSize: 12, color: cs.onSurfaceVariant)),
+              ],
+            ),
+          )
+        else
+          ...drafts.map((d) => _DraftTile(draft: d)),
+      ],
+    );
+  }
+}
+
+class _DraftTile extends StatelessWidget {
+  final SavedVideo draft;
+  const _DraftTile({required this.draft});
+
+  String _formatSize(int bytes) {
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(0)} KB';
+    return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+  }
+
+  String _formatDate(DateTime d) {
+    return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')} '
+        '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: cs.primaryContainer,
+          child: Icon(Icons.play_arrow, color: cs.onPrimaryContainer),
+        ),
+        title: Text(draft.topic,
+            maxLines: 1, overflow: TextOverflow.ellipsis),
+        subtitle: Text(
+          '${_formatDate(draft.created)}  •  ${_formatSize(draft.sizeBytes)}',
+          style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
+        ),
+        trailing: IconButton(
+          icon: Icon(Icons.delete_outline, color: cs.error, size: 20),
+          tooltip: 'Delete',
+          onPressed: () async {
+            final ok = await showDialog<bool>(
+              context: context,
+              builder: (_) => AlertDialog(
+                title: const Text('Delete video?'),
+                content: Text(draft.topic),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('Cancel'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    style: FilledButton.styleFrom(backgroundColor: cs.error),
+                    child: const Text('Delete'),
+                  ),
+                ],
+              ),
+            );
+            if (ok == true && context.mounted) {
+              await context.read<AppProvider>().deleteDraft(draft);
+            }
+          },
+        ),
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => PreviewScreen(videoPath: draft.path)),
         ),
       ),
     );
@@ -243,23 +390,3 @@ class _StatusBar extends StatelessWidget {
   }
 }
 
-class _RecentVideoTile extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    final task = context.watch<AppProvider>().currentTask;
-    if (task == null || task.step != TaskStep.done || task.outputPath == null) {
-      return const SizedBox.shrink();
-    }
-    return ListTile(
-      leading: const Icon(Icons.check_circle_outline, color: Colors.green),
-      title: Text(task.topic, maxLines: 1, overflow: TextOverflow.ellipsis),
-      subtitle: const Text('Last video — tap to preview'),
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => PreviewScreen(videoPath: task.outputPath!),
-        ),
-      ),
-    );
-  }
-}

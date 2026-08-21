@@ -12,8 +12,9 @@ enum VisualSource {
 
 /// TTS providers, from truly free (edge, device) to paid (openai, elevenlabs, azure).
 enum TtsProvider {
-  edgeTts,      // free, no key — Microsoft's public streaming endpoint
   deviceTts,    // free, on-device Android TTS
+  edgeTts,      // free, no key — Microsoft's public streaming endpoint
+  geminiTts,    // Google Gemini TTS — generous free tier
   azureTts,     // paid, 500k chars/month free tier — requires region + key
   openaiTts,    // paid
   elevenLabs,   // paid
@@ -100,6 +101,7 @@ extension TtsProviderInfo on TtsProvider {
   String get displayName => switch (this) {
         TtsProvider.deviceTts => 'On-Device (free, offline)',
         TtsProvider.edgeTts => 'Edge TTS (free, online)',
+        TtsProvider.geminiTts => 'Gemini TTS (free tier)',
         TtsProvider.azureTts => 'Azure TTS',
         TtsProvider.openaiTts => 'OpenAI TTS',
         TtsProvider.elevenLabs => 'ElevenLabs',
@@ -111,6 +113,7 @@ extension TtsProviderInfo on TtsProvider {
       };
 
   String get keyHint => switch (this) {
+        TtsProvider.geminiTts => 'AIza…  aistudio.google.com/apikey',
         TtsProvider.azureTts => 'Azure Speech key  portal.azure.com',
         TtsProvider.openaiTts => 'sk-…  platform.openai.com',
         TtsProvider.elevenLabs => 'xi-…  elevenlabs.io',

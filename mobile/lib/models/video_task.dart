@@ -6,6 +6,7 @@ enum TaskStep {
   composingVideo,
   done,
   error,
+  cancelled,
 }
 
 extension TaskStepLabel on TaskStep {
@@ -25,13 +26,16 @@ extension TaskStepLabel on TaskStep {
         return 'Done';
       case TaskStep.error:
         return 'Error';
+      case TaskStep.cancelled:
+        return 'Cancelled';
     }
   }
 
   bool get isActive =>
       this != TaskStep.idle &&
       this != TaskStep.done &&
-      this != TaskStep.error;
+      this != TaskStep.error &&
+      this != TaskStep.cancelled;
 
   double get progress {
     switch (this) {
@@ -48,6 +52,7 @@ extension TaskStepLabel on TaskStep {
       case TaskStep.done:
         return 1.0;
       case TaskStep.error:
+      case TaskStep.cancelled:
         return 0.0;
     }
   }

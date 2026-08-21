@@ -166,6 +166,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _fetchVoices() async {
+    // ElevenLabs is the only provider that requires a key to enumerate voices.
     if (_cfg.ttsProvider == TtsProvider.elevenLabs && _ttsKey.text.trim().isEmpty) {
       setState(() => _ttsTest = _TestResult.error('Enter API key first'));
       return;
@@ -371,6 +372,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _voiceHint() => switch (_cfg.ttsProvider) {
         TtsProvider.edgeTts || TtsProvider.deviceTts || TtsProvider.azureTts =>
           'en-US-AriaNeural',
+        TtsProvider.geminiTts => 'Kore | Puck | Charon | Aoede | Zephyr',
         TtsProvider.openaiTts => 'nova | alloy | echo | fable | onyx | shimmer',
         TtsProvider.elevenLabs => 'EXAVITQu4vr4xnSDxMaL',
       };

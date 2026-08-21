@@ -209,6 +209,38 @@ class _BottomActions extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // ── Running: show Stop button ──────────────────────────────────────────
+    if (task.step.isActive) {
+      return OutlinedButton.icon(
+        icon: const Icon(Icons.stop_circle_outlined),
+        label: const Text('Stop'),
+        onPressed: () => context.read<AppProvider>().stop(),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: Theme.of(context).colorScheme.error,
+        ),
+      );
+    }
+
+    // ── Cancelled ──────────────────────────────────────────────────────────
+    if (task.step == TaskStep.cancelled) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('Generation cancelled.',
+              style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant),
+              textAlign: TextAlign.center),
+          const SizedBox(height: 12),
+          OutlinedButton(
+            onPressed: () {
+              context.read<AppProvider>().reset();
+              Navigator.pop(context);
+            },
+            child: const Text('Go back'),
+          ),
+        ],
+      );
+    }
+
     if (task.step == TaskStep.done && task.outputPath != null) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
