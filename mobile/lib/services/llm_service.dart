@@ -29,16 +29,18 @@ Return JSON with exactly this structure:
   "scenes": [
     {
       "narration": "<10–30 words of spoken narration for this scene>",
-      "image_prompt": "<detailed visual prompt for an AI image generator, photorealistic, cinematic>"
+      "image_prompt": "<detailed visual prompt for AI image generation, cinematic, ~20 words>",
+      "search_terms": "<2–4 concrete visual keywords for stock-video search, e.g. 'sunset ocean waves'>"
     }
   ]
 }
 
 Rules:
 - Each narration is natural spoken prose, no stage directions.
-- Each image_prompt is vivid, specific, ~20 words.
+- image_prompt is vivid, specific, ~20 words (used if the app is set to AI images).
+- search_terms is short, concrete, searchable stock-video keywords (used for Pexels/Pixabay/Coverr).
 - No special characters in narration that break TTS.
-- Output valid JSON only, no explanation.
+- Output valid JSON only.
 ''';
 
     Map<String, dynamic> buildBody({required bool withJsonMode}) => {
@@ -85,6 +87,7 @@ Rules:
         index: e.key,
         narration: (s['narration'] as String? ?? '').trim(),
         imagePrompt: (s['image_prompt'] as String? ?? '').trim(),
+        searchQuery: (s['search_terms'] as String? ?? '').trim(),
       );
     }).where((s) => s.narration.isNotEmpty).toList();
 

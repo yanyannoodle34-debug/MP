@@ -11,8 +11,6 @@ const _kH = 1920;
 const _kFps = 25;
 
 class VideoService {
-  /// Compose a portrait 9:16 video from [scenes] (each has imagePath + audioPath + audioDuration).
-  /// Returns path to the finished MP4.
   Future<String> compose({
     required List<Scene> scenes,
     required AppConfig cfg,
@@ -22,30 +20,28 @@ class VideoService {
     final workDir = Directory('${tmpDir.path}/cloudai_work');
     await workDir.create(recursive: true);
 
-    // ── Step 1: per-scene video clips ─────────────────────────────────────
+    // Step 1: per-scene video clips
     final clipPaths = <String>[];
     for (var i = 0; i < scenes.length; i++) {
       final scene = scenes[i];
-      onProgress(i / scenes.length * 0.7, 'Rendering scene ${i + 1}/${scenes.length}…');
+      onProgress(
+          i / scenes.length * 0.7, 'Rendering scene ${i + 1}/${scenes.length}…');
 
       final clipPath = '${workDir.path}/clip_$i.mp4';
       await _renderSceneClip(
-        imagePath: scene.imagePath!,
-        audioPath: scene.audioPath!,
-        duration: scene.audioDuration,
+        scene: scene,
         outPath: clipPath,
         kenBurns: cfg.kenBurnsEnabled,
-        sceneIndex: i,
       );
       clipPaths.add(clipPath);
     }
 
-    // ── Step 2: concat all clips ──────────────────────────────────────────
+    // Step 2: concat all clips
     onProgress(0.75, 'Concatenating ${clipPaths.length} clips…');
     final concatPath = '${workDir.path}/concat.mp4';
     await _concatClips(clipPaths, concatPath);
 
-    // ── Step 3: burn subtitles (optional) ────────────────────────────────
+    // Step 3: burn subtitles (optional)
     final outputPath = await _buildOutputPath();
 
     if (cfg.subtitlesEnabled) {
@@ -60,9 +56,35 @@ class VideoService {
     return outputPath;
   }
 
-  // ── Scene clip (image + audio + optional ken-burns zoom) ─────────────────
+  // ── Scene clip: routes to image or video path ────────────────────────────
 
   Future<void> _renderSceneClip({
+    required Scene scene,
+    required String outPath,
+    required bool kenBurns,
+  }) async {
+    if (scene.mediaIsVideo) {
+      await _renderVideoClip(
+        videoPath: scene.mediaPath!,
+        audioPath: scene.audioPath!,
+        duration: scene.audioDuration,
+        outPath: outPath,
+        sceneIndex: scene.index,
+      );
+    } else {
+      await _renderImageClip(
+        imagePath: scene.mediaPath!,
+        audioPath: scene.audioPath!,
+        duration: scene.audioDuration,
+        outPath: outPath,
+        kenBurns: kenBurns,
+        sceneIndex: scene.index,
+      );
+    }
+  }
+
+  // Image + ken-burns + audio → clip
+  Future<void> _renderImageClip({
     required String imagePath,
     required String audioPath,
     required double duration,
@@ -72,8 +94,6 @@ class VideoService {
   }) async {
     final frames = (duration * _kFps).ceil();
 
-    // Ken-burns: slow zoom-in starting from 1.0x, ending ~1.08x over the clip
-    // zoompan: z = zoom factor, d = total frames, s = output size
     final videoFilter = kenBurns
         ? '[0:v]scale=${_kW * 2}:${_kH * 2},'
             'zoompan=z=\'if(lte(on,$frames),1.0+0.0008*on,1.0+0.0008*$frames)\':'
@@ -98,12 +118,11 @@ class VideoService {
     ].join(' ');
 
     final session = await FFmpegKit.execute(cmd);
-    final rc = await session.getReturnCode();
-    if (!ReturnCode.isSuccess(rc)) {
+    if (!ReturnCode.isSuccess(await session.getReturnCode())) {
       final logs = await session.getAllLogsAsString();
-      // If zoompan fails, retry without ken-burns
       if (kenBurns) {
-        await _renderSceneClip(
+        // Retry without ken-burns
+        await _renderImageClip(
           imagePath: imagePath,
           audioPath: audioPath,
           duration: duration,
@@ -117,7 +136,42 @@ class VideoService {
     }
   }
 
-  // ── Concat clips via concat demuxer ──────────────────────────────────────
+  // Stock video + audio → clip (loop video if shorter than audio, crop to 9:16)
+  Future<void> _renderVideoClip({
+    required String videoPath,
+    required String audioPath,
+    required double duration,
+    required String outPath,
+    required int sceneIndex,
+  }) async {
+    // scale + crop to 1080x1920 portrait
+    // stream_loop = -1 loops the video source, then -t caps to audio length
+    // audio from source 1 (the tts audio)
+    final cmd = [
+      '-y',
+      '-stream_loop', '-1',
+      '-i', _q(videoPath),
+      '-i', _q(audioPath),
+      '-filter_complex',
+      '[0:v]scale=$_kW:$_kH:force_original_aspect_ratio=increase,'
+          'crop=$_kW:$_kH,setpts=PTS-STARTPTS[vout]',
+      '-map', '[vout]', '-map', '1:a',
+      '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '24',
+      '-c:a', 'aac', '-b:a', '128k',
+      '-t', duration.toStringAsFixed(3),
+      '-pix_fmt', 'yuv420p',
+      '-movflags', '+faststart',
+      _q(outPath),
+    ].join(' ');
+
+    final session = await FFmpegKit.execute(cmd);
+    if (!ReturnCode.isSuccess(await session.getReturnCode())) {
+      final logs = await session.getAllLogsAsString();
+      throw Exception('Scene $sceneIndex video render failed.\n$logs');
+    }
+  }
+
+  // ── Concat via concat demuxer ─────────────────────────────────────────────
 
   Future<void> _concatClips(List<String> clips, String outPath) async {
     final tmpDir = await getTemporaryDirectory();
@@ -136,10 +190,20 @@ class VideoService {
     ].join(' ');
 
     final session = await FFmpegKit.execute(cmd);
-    final rc = await session.getReturnCode();
-    if (!ReturnCode.isSuccess(rc)) {
-      final logs = await session.getAllLogsAsString();
-      throw Exception('Concat failed.\n$logs');
+    if (!ReturnCode.isSuccess(await session.getReturnCode())) {
+      // Fallback: re-encode instead of stream copy (clips may differ in codec params)
+      final reencodeCmd = [
+        '-y',
+        '-f', 'concat', '-safe', '0', '-i', _q(listFile),
+        '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '24',
+        '-c:a', 'aac', '-b:a', '128k',
+        _q(outPath),
+      ].join(' ');
+      final session2 = await FFmpegKit.execute(reencodeCmd);
+      if (!ReturnCode.isSuccess(await session2.getReturnCode())) {
+        final logs = await session2.getAllLogsAsString();
+        throw Exception('Concat failed.\n$logs');
+      }
     }
   }
 
@@ -162,14 +226,12 @@ class VideoService {
     ].join(' ');
 
     final session = await FFmpegKit.execute(cmd);
-    final rc = await session.getReturnCode();
-    if (!ReturnCode.isSuccess(rc)) {
-      // subtitle filter failed → just copy without subs
+    if (!ReturnCode.isSuccess(await session.getReturnCode())) {
       await File(input).copy(out);
     }
   }
 
-  // ── SRT generation from scenes ────────────────────────────────────────────
+  // ── SRT generation ────────────────────────────────────────────────────────
 
   Future<String> _writeSrt(List<Scene> scenes, String dir) async {
     final srtPath = '$dir/subs.srt';
@@ -177,13 +239,15 @@ class VideoService {
     int idx = 1;
     double cursor = 0.0;
 
-    for (final scene in scenes) {
+    for (var i = 0; i < scenes.length; i++) {
+      final scene = scenes[i];
       final dur = scene.audioDuration;
       final words = scene.narration.trim().split(RegExp(r'\s+'));
       final chunkSize = (words.length / 2).ceil().clamp(3, 8);
 
-      for (var i = 0; i < words.length; i += chunkSize) {
-        final chunk = words.sublist(i, (i + chunkSize).clamp(0, words.length));
+      final sceneStart = cursor;
+      for (var w = 0; w < words.length; w += chunkSize) {
+        final chunk = words.sublist(w, (w + chunkSize).clamp(0, words.length));
         final segDur = dur * chunk.length / words.length;
         final start = cursor;
         final end = cursor + segDur;
@@ -194,11 +258,7 @@ class VideoService {
         buf.writeln();
         cursor = end;
       }
-      // Ensure cursor advances by full scene duration
-      if (cursor < (scenes.indexOf(scene) + 1) * dur) {
-        cursor = scenes.sublist(0, scenes.indexOf(scene) + 1)
-            .fold(0.0, (s, sc) => s + sc.audioDuration);
-      }
+      cursor = sceneStart + dur; // ensure cursor aligns even with rounding
     }
 
     await File(srtPath).writeAsString(buf.toString());
@@ -215,8 +275,6 @@ class VideoService {
         '${sec.toString().padLeft(2, '0')},${millis.toString().padLeft(3, '0')}';
   }
 
-  // ── Output path ───────────────────────────────────────────────────────────
-
   Future<String> _buildOutputPath() async {
     final ext = await getExternalStorageDirectory();
     final dir = Directory(
@@ -225,15 +283,11 @@ class VideoService {
     return '${dir.path}/video_${DateTime.now().millisecondsSinceEpoch}.mp4';
   }
 
-  // ── Probe duration via FFprobe ────────────────────────────────────────────
-
   Future<double> probeDuration(String path) async {
     final session = await FFprobeKit.getMediaInformation(path);
     final info = session.getMediaInformation();
     return double.tryParse(info?.getDuration() ?? '') ?? 4.0;
   }
-
-  // ── String helpers ────────────────────────────────────────────────────────
 
   String _q(String p) => "'$p'";
 
