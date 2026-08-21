@@ -11,10 +11,12 @@ class LlmService {
   Future<VideoScript> generateScript(String topic, AppConfig cfg) async {
     final n = cfg.sceneCount;
 
+    // NOTE: the word "json" must appear in the prompt for DeepSeek's JSON mode
+    // (their API rejects json_object without it).
     final system = '''
 You are a short-form video scriptwriter. Write an engaging $n-scene narration
 and craft a vivid image-generation prompt for each scene.
-Return ONLY valid JSON — no markdown, no extra keys.
+Return ONLY valid JSON — no markdown fences, no prose before or after.
 ''';
 
     final user = '''
@@ -34,25 +36,69 @@ Return JSON with exactly this structure:
 
 Rules:
 - Each narration is natural spoken prose, no stage directions.
-- Each image_prompt is vivid, specific, ~20 words, appended with "cinematic 4K 9:16 portrait".
+- Each image_prompt is vivid, specific, ~20 words.
 - No special characters in narration that break TTS.
+- Output valid JSON only, no explanation.
 ''';
 
-    final data = <String, dynamic>{
-      'model': cfg.llmModel,
-      'messages': [
-        {'role': 'system', 'content': system},
-        {'role': 'user', 'content': user},
-      ],
-      'temperature': 0.75,
-      'max_tokens': 2048,
-    };
-    // DeepSeek and OpenAI-compatible providers all support response_format,
-    // but OpenRouter forwards it selectively — safest to send when known.
-    if (cfg.llmProvider != LlmProvider.deepseek) {
-      data['response_format'] = {'type': 'json_object'};
+    Map<String, dynamic> buildBody({required bool withJsonMode}) => {
+          'model': cfg.llmModel,
+          'messages': [
+            {'role': 'system', 'content': system},
+            {'role': 'user', 'content': user},
+          ],
+          'temperature': 0.75,
+          'max_tokens': 2048,
+          if (withJsonMode) 'response_format': {'type': 'json_object'},
+        };
+
+    // First attempt: with JSON mode (works on OpenAI, DeepSeek, OpenRouter most models)
+    String content;
+    try {
+      content = await _chat(cfg, buildBody(withJsonMode: true));
+    } on DioException catch (e) {
+      // If the model rejects response_format (e.g. some OpenRouter models don't
+      // support it), retry without.
+      final msg = _extractError(e.response?.data).toLowerCase();
+      final looksLikeJsonModeReject = msg.contains('response_format') ||
+          msg.contains('json_object') ||
+          e.response?.statusCode == 400;
+      if (looksLikeJsonModeReject) {
+        content = await _chat(cfg, buildBody(withJsonMode: false));
+      } else {
+        rethrow;
+      }
     }
 
+    final parsed = _extractJson(content);
+    final title = (parsed['title'] as String?)?.trim();
+    final rawScenes = parsed['scenes'] as List?;
+    if (rawScenes == null || rawScenes.isEmpty) {
+      throw Exception(
+        'LLM returned no scenes. Try a different model or shorter topic.',
+      );
+    }
+
+    final scenes = rawScenes.asMap().entries.map((e) {
+      final s = e.value as Map<String, dynamic>;
+      return Scene(
+        index: e.key,
+        narration: (s['narration'] as String? ?? '').trim(),
+        imagePrompt: (s['image_prompt'] as String? ?? '').trim(),
+      );
+    }).where((s) => s.narration.isNotEmpty).toList();
+
+    if (scenes.isEmpty) {
+      throw Exception('LLM returned empty scenes.');
+    }
+
+    return VideoScript(
+      title: (title == null || title.isEmpty) ? topic : title,
+      scenes: scenes,
+    );
+  }
+
+  Future<String> _chat(AppConfig cfg, Map<String, dynamic> body) async {
     final resp = await _dio.post(
       '${cfg.llmBaseUrl}/chat/completions',
       options: Options(
@@ -60,40 +106,46 @@ Rules:
         receiveTimeout: const Duration(seconds: 90),
         sendTimeout: const Duration(seconds: 30),
       ),
-      data: data,
+      data: body,
     );
+    return resp.data['choices'][0]['message']['content'] as String;
+  }
 
-    var content = resp.data['choices'][0]['message']['content'] as String;
-    // Some providers wrap JSON in ```json fences — strip if present.
-    content = content.trim();
-    if (content.startsWith('```')) {
-      content = content.replaceAll(RegExp(r'^```(?:json)?\s*|\s*```$'), '');
+  /// Robust JSON extraction — handles markdown fences, prose padding, and
+  /// leading BOM/whitespace.
+  Map<String, dynamic> _extractJson(String raw) {
+    var text = raw.trim();
+
+    // Strip ```json … ``` fences if present.
+    if (text.startsWith('```')) {
+      text = text.replaceAll(RegExp(r'^```(?:json)?\s*', multiLine: false), '');
+      text = text.replaceAll(RegExp(r'\s*```\s*$', multiLine: false), '');
     }
 
-    final Map<String, dynamic> parsed = jsonDecode(content);
+    // Try direct parse first.
+    try {
+      final v = jsonDecode(text);
+      if (v is Map<String, dynamic>) return v;
+    } catch (_) {}
 
-    final title = parsed['title'] as String? ?? topic;
-    final rawScenes = parsed['scenes'] as List?;
-    if (rawScenes == null || rawScenes.isEmpty) {
-      throw Exception('LLM returned no scenes.');
+    // Fallback: extract the outermost {...} block.
+    final start = text.indexOf('{');
+    final end = text.lastIndexOf('}');
+    if (start >= 0 && end > start) {
+      final slice = text.substring(start, end + 1);
+      try {
+        final v = jsonDecode(slice);
+        if (v is Map<String, dynamic>) return v;
+      } catch (_) {}
     }
 
-    final scenes = rawScenes.asMap().entries.map((e) {
-      final s = e.value as Map<String, dynamic>;
-      return Scene(
-        index: e.key,
-        narration: s['narration'] as String? ?? '',
-        imagePrompt: s['image_prompt'] as String? ?? '',
-      );
-    }).toList();
-
-    return VideoScript(title: title, scenes: scenes);
+    throw Exception(
+      'LLM did not return valid JSON. First 200 chars:\n${text.substring(0, text.length.clamp(0, 200))}',
+    );
   }
 
   // ── Model listing ──────────────────────────────────────────────────────────
 
-  /// GET /models — returns model IDs available to this API key.
-  /// Works on any OpenAI-compatible provider (OpenRouter, OpenAI, DeepSeek).
   Future<List<String>> fetchModels(AppConfig cfg) async {
     final resp = await _dio.get(
       '${cfg.llmBaseUrl}/models',
@@ -111,14 +163,15 @@ Rules:
         .where((s) => s.isNotEmpty)
         .toList();
 
-    // Filter out non-chat models (embeddings, tts, whisper) heuristically.
+    // Filter out non-chat models heuristically.
     final chatOnly = ids.where((id) {
       final lower = id.toLowerCase();
       return !lower.contains('embed') &&
           !lower.contains('whisper') &&
           !lower.contains('tts') &&
           !lower.contains('dall-e') &&
-          !lower.contains('audio');
+          !lower.contains('audio') &&
+          !lower.contains('moderation');
     }).toList();
 
     chatOnly.sort();
@@ -127,21 +180,19 @@ Rules:
 
   // ── Key validation ─────────────────────────────────────────────────────────
 
-  /// Quick auth check: try GET /models. Returns null on success, error message on failure.
   Future<String?> testKey(AppConfig cfg) async {
     try {
-      await _dio.get(
+      final r = await _dio.get(
         '${cfg.llmBaseUrl}/models',
         options: Options(
           headers: _headers(cfg),
           receiveTimeout: const Duration(seconds: 15),
           validateStatus: (_) => true,
         ),
-      ).then((r) {
-        if (r.statusCode == null || r.statusCode! < 200 || r.statusCode! >= 300) {
-          throw Exception('HTTP ${r.statusCode}: ${_extractError(r.data)}');
-        }
-      });
+      );
+      if (r.statusCode == null || r.statusCode! < 200 || r.statusCode! >= 300) {
+        return 'HTTP ${r.statusCode}: ${_extractError(r.data)}';
+      }
       return null;
     } catch (e) {
       return _friendlyError(e);

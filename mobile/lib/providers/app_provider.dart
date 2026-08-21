@@ -67,9 +67,9 @@ class AppProvider extends ChangeNotifier {
           .copyWith(step: TaskStep.generatingImages)
           .addLog('Generating ${script.scenes.length} images + audio in parallel…'));
 
-      await _generateSceneAssets(script.scenes);
+      final readyScenes = await _generateSceneAssets(script.scenes);
       _update(currentTask!
-          .addLog('All scene assets ready.'));
+          .addLog('${readyScenes.length} scene assets ready.'));
 
       // ── 3. Compose video ───────────────────────────────────────────────────
       _update(currentTask!
@@ -77,7 +77,7 @@ class AppProvider extends ChangeNotifier {
           .addLog('Starting FFmpeg composition…'));
 
       final outputPath = await _videoService.compose(
-        scenes: script.scenes,
+        scenes: readyScenes,
         cfg: config,
         onProgress: (p, log) =>
             _update(currentTask!.copyWith(stageProgress: p).addLog(log)),
@@ -96,30 +96,58 @@ class AppProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> _generateSceneAssets(List<Scene> scenes) async {
+  Future<List<Scene>> _generateSceneAssets(List<Scene> scenes) async {
     final total = scenes.length;
     int done = 0;
+    int failed = 0;
 
-    // Run image + audio in parallel for each scene, but cap concurrency at 3
+    // Concurrent workers with a bounded pool of 3.
     const maxConcurrent = 3;
-    final futures = <Future<void>>[];
+    final pending = <Future<void>>[];
 
-    for (var i = 0; i < total; i++) {
-      final scene = scenes[i];
-
-      if (futures.length >= maxConcurrent) {
-        await futures.removeAt(0);
+    for (final scene in scenes) {
+      if (pending.length >= maxConcurrent) {
+        await pending.removeAt(0);
       }
 
-      futures.add(_generateOneScene(scene).then((_) {
-        done++;
-        _update(currentTask!
-            .copyWith(stageProgress: done / total)
-            .addLog('Scene ${scene.index + 1}/$total assets ready.'));
-      }));
+      final f = _generateOneScene(scene).then(
+        (_) {
+          done++;
+          _update(currentTask!
+              .copyWith(stageProgress: done / total)
+              .addLog('Scene ${scene.index + 1}/$total ready.'));
+        },
+        onError: (e, _) {
+          failed++;
+          _update(currentTask!
+              .copyWith(stageProgress: (done + failed) / total)
+              .addLog('Scene ${scene.index + 1} failed: $e (skipping)'));
+        },
+      );
+      pending.add(f);
     }
 
-    await Future.wait(futures);
+    await Future.wait(pending);
+
+    // Keep only scenes that have both an image and an audio file.
+    final ok = scenes
+        .where((s) =>
+            s.imagePath != null &&
+            s.audioPath != null &&
+            s.audioDuration > 0)
+        .toList();
+
+    if (ok.isEmpty) {
+      throw Exception(
+        'All $total scenes failed. Check your API keys with the Test button.',
+      );
+    }
+    if (ok.length < total) {
+      _update(currentTask!.addLog(
+        'Continuing with ${ok.length}/$total scenes (${total - ok.length} dropped).',
+      ));
+    }
+    return ok;
   }
 
   Future<void> _generateOneScene(Scene scene) async {

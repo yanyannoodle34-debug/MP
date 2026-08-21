@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../models/app_config.dart';
 import '../providers/app_provider.dart';
@@ -28,6 +29,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _llmService = LlmService();
   final _imageService = ImageService();
   final _ttsService = TtsService();
+
+  // per-field key visibility (default: obscured)
+  bool _llmKeyVisible = false;
+  bool _imageKeyVisible = false;
+  bool _ttsKeyVisible = false;
 
   // per-section test / fetch state
   _TestResult? _llmTest;
@@ -264,7 +270,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _dirty = true;
             }),
           ),
-          _key('API Key', _llmKey, hint: _cfg.llmProvider.keyHint),
+          _key(
+            'API Key',
+            _llmKey,
+            hint: _cfg.llmProvider.keyHint,
+            visible: _llmKeyVisible,
+            onToggleVisibility: () =>
+                setState(() => _llmKeyVisible = !_llmKeyVisible),
+          ),
           _row(
             children: [
               Expanded(
@@ -318,7 +331,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
               _dirty = true;
             }),
           ),
-          _key('API Key', _imageKey, hint: _imageKeyHint()),
+          _key(
+            'API Key',
+            _imageKey,
+            hint: _imageKeyHint(),
+            visible: _imageKeyVisible,
+            onToggleVisibility: () =>
+                setState(() => _imageKeyVisible = !_imageKeyVisible),
+          ),
           _text('Model', _imageModel, hint: _cfg.imageModel),
           _testRow(
             testing: _imageTesting,
@@ -349,6 +369,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             hint: _cfg.ttsProvider == TtsProvider.elevenLabs
                 ? 'xi-…  elevenlabs.io'
                 : 'sk-…  platform.openai.com',
+            visible: _ttsKeyVisible,
+            onToggleVisibility: () =>
+                setState(() => _ttsKeyVisible = !_ttsKeyVisible),
           ),
           _row(
             children: [
@@ -443,18 +466,53 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: Row(children: children),
       );
 
-  Widget _key(String label, TextEditingController c, {String hint = ''}) =>
+  Widget _key(
+    String label,
+    TextEditingController c, {
+    required bool visible,
+    required VoidCallback onToggleVisibility,
+    String hint = '',
+  }) =>
       Padding(
         padding: const EdgeInsets.only(bottom: 8),
         child: TextField(
           controller: c,
-          obscureText: true,
+          obscureText: !visible,
           onChanged: (_) => _mark(),
+          autocorrect: false,
+          enableSuggestions: false,
           decoration: InputDecoration(
-              labelText: label,
-              hintText: hint,
-              border: const OutlineInputBorder(),
-              isDense: true),
+            labelText: label,
+            hintText: hint,
+            border: const OutlineInputBorder(),
+            isDense: true,
+            suffixIcon: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.content_paste, size: 18),
+                  tooltip: 'Paste',
+                  onPressed: () async {
+                    final data = await Clipboard.getData(Clipboard.kTextPlain);
+                    final text = data?.text?.trim();
+                    if (text != null && text.isNotEmpty) {
+                      c.text = text;
+                      _mark();
+                    }
+                  },
+                  visualDensity: VisualDensity.compact,
+                ),
+                IconButton(
+                  icon: Icon(
+                      visible ? Icons.visibility_off : Icons.visibility,
+                      size: 18),
+                  tooltip: visible ? 'Hide' : 'Show',
+                  onPressed: onToggleVisibility,
+                  visualDensity: VisualDensity.compact,
+                ),
+              ],
+            ),
+          ),
         ),
       );
 

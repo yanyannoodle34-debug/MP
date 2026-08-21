@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import '../providers/app_provider.dart';
+import '../models/app_config.dart';
 import '../models/video_task.dart';
 import 'generate_screen.dart';
 import 'preview_screen.dart';
@@ -93,9 +94,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   .bodyMedium
                   ?.copyWith(color: cs.onSurfaceVariant),
             ),
-            const SizedBox(height: 28),
+            const SizedBox(height: 20),
             _PipelineCard(),
-            const SizedBox(height: 28),
+            const SizedBox(height: 12),
+            _StatusBar(),
+            const SizedBox(height: 20),
             TextField(
               controller: _ctrl,
               maxLines: 3,
@@ -160,6 +163,88 @@ class _PipelineCard extends StatelessWidget {
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _StatusBar extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final cfg = context.watch<AppProvider>().config;
+    final cs = Theme.of(context).colorScheme;
+
+    final items = [
+      (
+        'LLM',
+        cfg.llmProvider.displayName,
+        cfg.llmApiKey.isNotEmpty,
+      ),
+      (
+        'Image',
+        switch (cfg.imageProvider) {
+          ImageGenProvider.dalle3 => 'DALL-E 3',
+          ImageGenProvider.stabilityAi => 'Stability',
+          ImageGenProvider.flux => 'Flux',
+        },
+        cfg.imageApiKey.isNotEmpty,
+      ),
+      (
+        'Voice',
+        switch (cfg.ttsProvider) {
+          TtsProvider.elevenLabs => 'ElevenLabs',
+          TtsProvider.openaiTts => 'OpenAI TTS',
+        },
+        cfg.ttsApiKey.isNotEmpty,
+      ),
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: items.map((item) {
+          final label = item.$1;
+          final name = item.$2;
+          final ok = item.$3;
+          return Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+                decoration: BoxDecoration(
+                  color: (ok ? Colors.green : cs.error).withAlpha(24),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          ok
+                              ? Icons.check_circle_outline
+                              : Icons.error_outline,
+                          size: 12,
+                          color: ok ? Colors.green : cs.error,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(label,
+                            style: TextStyle(
+                                fontSize: 10,
+                                color: cs.onSurfaceVariant)),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(name,
+                        style: const TextStyle(
+                            fontSize: 11, fontWeight: FontWeight.w600),
+                        overflow: TextOverflow.ellipsis),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }).toList(),
       ),
     );
   }
