@@ -101,4 +101,78 @@ class TtsService {
   }
 
   Future<void> dispose() async {}
+
+  // ── Key validation ────────────────────────────────────────────────────────
+  /// Auth check. Returns null on success, error message on failure.
+  Future<String?> testKey(AppConfig cfg) async {
+    try {
+      switch (cfg.ttsProvider) {
+        case TtsProvider.elevenLabs:
+          final r = await _dio.get(
+            'https://api.elevenlabs.io/v1/user',
+            options: Options(
+              headers: {'xi-api-key': cfg.ttsApiKey},
+              receiveTimeout: const Duration(seconds: 15),
+              validateStatus: (_) => true,
+            ),
+          );
+          if (r.statusCode != 200) return 'HTTP ${r.statusCode}: ${_err(r.data)}';
+          return null;
+
+        case TtsProvider.openaiTts:
+          final r = await _dio.get(
+            'https://api.openai.com/v1/models',
+            options: Options(
+              headers: {'Authorization': 'Bearer ${cfg.ttsApiKey}'},
+              receiveTimeout: const Duration(seconds: 15),
+              validateStatus: (_) => true,
+            ),
+          );
+          if (r.statusCode != 200) return 'HTTP ${r.statusCode}: ${_err(r.data)}';
+          return null;
+      }
+    } catch (e) {
+      if (e is DioException && e.response != null) {
+        return 'HTTP ${e.response!.statusCode}: ${_err(e.response!.data)}';
+      }
+      return e.toString();
+    }
+  }
+
+  /// List ElevenLabs voices, or OpenAI TTS voice names.
+  Future<List<({String id, String name})>> fetchVoices(AppConfig cfg) async {
+    switch (cfg.ttsProvider) {
+      case TtsProvider.elevenLabs:
+        final r = await _dio.get(
+          'https://api.elevenlabs.io/v1/voices',
+          options: Options(
+            headers: {'xi-api-key': cfg.ttsApiKey},
+            receiveTimeout: const Duration(seconds: 20),
+          ),
+        );
+        final voices = r.data['voices'] as List? ?? [];
+        return voices
+            .map((v) => (
+                  id: (v['voice_id'] as String?) ?? '',
+                  name: (v['name'] as String?) ?? '(unnamed)',
+                ))
+            .where((v) => v.id.isNotEmpty)
+            .toList();
+
+      case TtsProvider.openaiTts:
+        // OpenAI TTS voices are a fixed list; no API endpoint to enumerate.
+        const openaiVoices = ['alloy', 'echo', 'fable', 'onyx', 'nova', 'shimmer'];
+        return openaiVoices.map((v) => (id: v, name: v)).toList();
+    }
+  }
+
+  String _err(dynamic body) {
+    if (body is Map) {
+      final err = body['error'];
+      if (err is Map) return (err['message'] as String?) ?? body.toString();
+      if (err is String) return err;
+      return (body['message'] as String?) ?? body.toString();
+    }
+    return body?.toString() ?? 'unknown error';
+  }
 }

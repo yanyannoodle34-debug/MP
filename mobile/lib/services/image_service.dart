@@ -127,4 +127,70 @@ class ImageService {
     );
     return path;
   }
+
+  // ── Key validation ────────────────────────────────────────────────────────
+  /// Cheap auth check. Returns null on success, error message on failure.
+  /// Uses each provider's lightest available auth-checking endpoint.
+  Future<String?> testKey(AppConfig cfg) async {
+    try {
+      switch (cfg.imageProvider) {
+        case ImageGenProvider.dalle3:
+          // GET /models is auth-only, no image generation cost.
+          final r = await _dio.get(
+            'https://api.openai.com/v1/models',
+            options: Options(
+              headers: {'Authorization': 'Bearer ${cfg.imageApiKey}'},
+              receiveTimeout: const Duration(seconds: 15),
+              validateStatus: (_) => true,
+            ),
+          );
+          if (r.statusCode != 200) return 'HTTP ${r.statusCode}: ${_err(r.data)}';
+          return null;
+
+        case ImageGenProvider.stabilityAi:
+          // GET /v1/user/account — free, auth-only.
+          final r = await _dio.get(
+            'https://api.stability.ai/v1/user/account',
+            options: Options(
+              headers: {'Authorization': 'Bearer ${cfg.imageApiKey}'},
+              receiveTimeout: const Duration(seconds: 15),
+              validateStatus: (_) => true,
+            ),
+          );
+          if (r.statusCode != 200) return 'HTTP ${r.statusCode}: ${_err(r.data)}';
+          return null;
+
+        case ImageGenProvider.flux:
+          // fal.ai — call queue status endpoint, auth-only.
+          final r = await _dio.get(
+            'https://queue.fal.run/fal-ai/flux/schnell',
+            options: Options(
+              headers: {'Authorization': 'Key ${cfg.imageApiKey}'},
+              receiveTimeout: const Duration(seconds: 15),
+              validateStatus: (_) => true,
+            ),
+          );
+          // 401/403 = bad key; anything else (400, 404, 200) = auth passed
+          if (r.statusCode == 401 || r.statusCode == 403) {
+            return 'HTTP ${r.statusCode}: ${_err(r.data)}';
+          }
+          return null;
+      }
+    } catch (e) {
+      if (e is DioException && e.response != null) {
+        return 'HTTP ${e.response!.statusCode}: ${_err(e.response!.data)}';
+      }
+      return e.toString();
+    }
+  }
+
+  String _err(dynamic body) {
+    if (body is Map) {
+      final err = body['error'];
+      if (err is Map) return (err['message'] as String?) ?? body.toString();
+      if (err is String) return err;
+      return (body['message'] as String?) ?? body.toString();
+    }
+    return body?.toString() ?? 'unknown error';
+  }
 }

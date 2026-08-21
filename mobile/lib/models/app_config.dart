@@ -1,8 +1,34 @@
-enum LlmProvider { openrouter, openai }
+enum LlmProvider { openrouter, openai, deepseek }
 
 enum ImageGenProvider { dalle3, stabilityAi, flux }
 
 enum TtsProvider { elevenLabs, openaiTts }
+
+extension LlmProviderInfo on LlmProvider {
+  String get displayName => switch (this) {
+        LlmProvider.openrouter => 'OpenRouter',
+        LlmProvider.openai => 'OpenAI',
+        LlmProvider.deepseek => 'DeepSeek',
+      };
+
+  String get baseUrl => switch (this) {
+        LlmProvider.openrouter => 'https://openrouter.ai/api/v1',
+        LlmProvider.openai => 'https://api.openai.com/v1',
+        LlmProvider.deepseek => 'https://api.deepseek.com/v1',
+      };
+
+  String get defaultModel => switch (this) {
+        LlmProvider.openrouter => 'openai/gpt-4o-mini',
+        LlmProvider.openai => 'gpt-4o-mini',
+        LlmProvider.deepseek => 'deepseek-chat',
+      };
+
+  String get keyHint => switch (this) {
+        LlmProvider.openrouter => 'sk-or-…  openrouter.ai/keys',
+        LlmProvider.openai => 'sk-…  platform.openai.com',
+        LlmProvider.deepseek => 'sk-…  platform.deepseek.com',
+      };
+}
 
 class AppConfig {
   // ── LLM ──────────────────────────────────────────────────────────────────
@@ -42,9 +68,7 @@ class AppConfig {
     this.kenBurnsEnabled = true,
   });
 
-  String get llmBaseUrl => llmProvider == LlmProvider.openrouter
-      ? 'https://openrouter.ai/api/v1'
-      : 'https://api.openai.com/v1';
+  String get llmBaseUrl => llmProvider.baseUrl;
 
   AppConfig copyWith({
     LlmProvider? llmProvider,
