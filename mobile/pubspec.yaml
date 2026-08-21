@@ -1,7 +1,7 @@
 name: money_printer_mobile
 description: CloudAI Creator — cloud AI script/image/voice, on-device video render.
 publish_to: none
-version: 1.3.0+4
+version: 1.3.1+5
 
 environment:
   sdk: '>=3.4.0 <4.0.0'
@@ -45,6 +45,9 @@ dependencies:
   # WebSocket for Edge TTS (free, no API key). 3.x requires web:^1.0.0 which
   # is what share_plus 10.x expects too — so we align on ^3.0.0.
   web_socket_channel: ^3.0.0
+
+  # SHA-256 for Edge TTS's Sec-MS-GEC handshake token.
+  crypto: ^3.0.3
 
   cupertino_icons: ^1.0.6
 
