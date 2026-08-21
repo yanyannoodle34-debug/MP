@@ -6,7 +6,7 @@ import '../models/app_config.dart';
 import '../models/scene.dart';
 import '../models/video_task.dart';
 import '../services/llm_service.dart';
-import '../services/image_service.dart';
+import '../services/visual_service.dart';
 import '../services/tts_service.dart';
 import '../services/video_service.dart';
 
@@ -15,14 +15,14 @@ class AppProvider extends ChangeNotifier {
   VideoTask? currentTask;
 
   final _llm = LlmService();
-  final _imageService = ImageService();
+  final _visualService = VisualService();
   final _ttsService = TtsService();
   final _videoService = VideoService();
   final _uuid = const Uuid();
 
   Future<void> loadConfig() async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString('app_config_v2');
+    final raw = prefs.getString('app_config_v3');
     if (raw != null) {
       try {
         config = AppConfig.fromJson(jsonDecode(raw) as Map<String, dynamic>);
@@ -34,7 +34,7 @@ class AppProvider extends ChangeNotifier {
   Future<void> saveConfig(AppConfig cfg) async {
     config = cfg;
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('app_config_v2', jsonEncode(cfg.toJson()));
+    await prefs.setString('app_config_v3', jsonEncode(cfg.toJson()));
     notifyListeners();
   }
 
@@ -59,13 +59,20 @@ class AppProvider extends ChangeNotifier {
       _update(currentTask!
           .addLog('Script: "${script.title}" — ${script.scenes.length} scenes'));
 
-      // ── 2. Images + Audio (parallel per scene) ─────────────────────────────
-      _validateKey('Image API key', config.imageApiKey);
-      _validateKey('TTS API key', config.ttsApiKey);
+      // ── 2. Visuals + Audio (parallel per scene) ────────────────────────────
+      if (config.visualSource.isAI || config.visualSource.isStock) {
+        _validateKey('${config.visualSource.displayName} API key', config.visualApiKey);
+      }
+      if (config.ttsProvider.requiresKey) {
+        _validateKey('TTS API key', config.ttsApiKey);
+      }
 
+      final sourceLabel = config.visualSource.isAI
+          ? 'AI-generated images'
+          : 'stock video clips (${config.visualSource.displayName})';
       _update(currentTask!
           .copyWith(step: TaskStep.generatingImages)
-          .addLog('Generating ${script.scenes.length} images + audio in parallel…'));
+          .addLog('Fetching ${script.scenes.length} $sourceLabel + audio in parallel…'));
 
       final readyScenes = await _generateSceneAssets(script.scenes);
       _update(currentTask!
@@ -101,7 +108,6 @@ class AppProvider extends ChangeNotifier {
     int done = 0;
     int failed = 0;
 
-    // Concurrent workers with a bounded pool of 3.
     const maxConcurrent = 3;
     final pending = <Future<void>>[];
 
@@ -129,10 +135,9 @@ class AppProvider extends ChangeNotifier {
 
     await Future.wait(pending);
 
-    // Keep only scenes that have both an image and an audio file.
     final ok = scenes
         .where((s) =>
-            s.imagePath != null &&
+            s.mediaPath != null &&
             s.audioPath != null &&
             s.audioDuration > 0)
         .toList();
@@ -152,23 +157,55 @@ class AppProvider extends ChangeNotifier {
 
   Future<void> _generateOneScene(Scene scene) async {
     final i = scene.index;
-    _update(currentTask!.addLog('Scene ${i + 1}: requesting image + audio…'));
+    final searchTerms = scene.searchQuery.isNotEmpty
+        ? scene.searchQuery
+        : scene.narration.split(' ').take(5).join(' ');
 
-    final results = await Future.wait([
-      _imageService.generate(scene.imagePrompt, i, config),
-      _ttsService.synthesize(scene.narration, i, config),
-    ]);
+    // Fire both in parallel but track their errors independently so we can
+    // tell the user which service failed.
+    _update(currentTask!.addLog(
+        'Scene ${i + 1}: fetching ${config.visualSource.displayName}…'));
 
-    scene.imagePath = results[0] as String;
-    final audioResult = results[1] as ({String path, double duration});
-    scene.audioPath = audioResult.path;
+    final visualFut = _visualService
+        .fetch(
+      imagePrompt: scene.imagePrompt,
+      searchQuery: searchTerms,
+      sceneIndex: i,
+      cfg: config,
+    )
+        .then<Object?>((v) => v, onError: (e) => e);
 
-    // Use FFprobe for accurate audio duration if available
+    final audioFut = _ttsService
+        .synthesize(scene.narration, i, config)
+        .then<Object?>((a) => a, onError: (e) => e);
+
+    final results = await Future.wait([visualFut, audioFut]);
+    final visualResult = results[0];
+    final audioResult = results[1];
+
+    final errors = <String>[];
+    if (visualResult is Exception || visualResult is Error) {
+      errors.add('${config.visualSource.displayName}: $visualResult');
+    }
+    if (audioResult is Exception || audioResult is Error) {
+      errors.add('${config.ttsProvider.displayName}: $audioResult');
+    }
+    if (errors.isNotEmpty) {
+      throw Exception(errors.join(' | '));
+    }
+
+    final visual = visualResult as VisualAsset;
+    scene.mediaPath = visual.path;
+    scene.mediaIsVideo = visual.isVideo;
+
+    final audio = audioResult as ({String path, double duration});
+    scene.audioPath = audio.path;
+
     try {
-      final probed = await _videoService.probeDuration(audioResult.path);
-      scene.audioDuration = probed > 0 ? probed : audioResult.duration;
+      final probed = await _videoService.probeDuration(audio.path);
+      scene.audioDuration = probed > 0 ? probed : audio.duration;
     } catch (_) {
-      scene.audioDuration = audioResult.duration;
+      scene.audioDuration = audio.duration;
     }
   }
 

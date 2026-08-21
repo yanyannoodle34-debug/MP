@@ -181,21 +181,14 @@ class _StatusBar extends StatelessWidget {
         cfg.llmApiKey.isNotEmpty,
       ),
       (
-        'Image',
-        switch (cfg.imageProvider) {
-          ImageGenProvider.dalle3 => 'DALL-E 3',
-          ImageGenProvider.stabilityAi => 'Stability',
-          ImageGenProvider.flux => 'Flux',
-        },
-        cfg.imageApiKey.isNotEmpty,
+        cfg.visualSource.isAI ? 'Image' : 'Video',
+        cfg.visualSource.displayName,
+        cfg.visualApiKey.isNotEmpty,
       ),
       (
         'Voice',
-        switch (cfg.ttsProvider) {
-          TtsProvider.elevenLabs => 'ElevenLabs',
-          TtsProvider.openaiTts => 'OpenAI TTS',
-        },
-        cfg.ttsApiKey.isNotEmpty,
+        cfg.ttsProvider.displayName,
+        !cfg.ttsProvider.requiresKey || cfg.ttsApiKey.isNotEmpty,
       ),
     ];
 

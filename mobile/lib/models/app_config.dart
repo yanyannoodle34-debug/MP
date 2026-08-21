@@ -1,8 +1,23 @@
 enum LlmProvider { openrouter, openai, deepseek }
 
-enum ImageGenProvider { dalle3, stabilityAi, flux }
+/// All visual sources — both AI generators and stock media providers.
+enum VisualSource {
+  dalle3,
+  stabilityAi,
+  flux,
+  pexels,
+  pixabay,
+  coverr,
+}
 
-enum TtsProvider { elevenLabs, openaiTts }
+/// TTS providers, from truly free (edge, device) to paid (openai, elevenlabs, azure).
+enum TtsProvider {
+  edgeTts,      // free, no key — Microsoft's public streaming endpoint
+  deviceTts,    // free, on-device Android TTS
+  azureTts,     // paid, 500k chars/month free tier — requires region + key
+  openaiTts,    // paid
+  elevenLabs,   // paid
+}
 
 extension LlmProviderInfo on LlmProvider {
   String get displayName => switch (this) {
@@ -30,22 +45,96 @@ extension LlmProviderInfo on LlmProvider {
       };
 }
 
+extension VisualSourceInfo on VisualSource {
+  String get displayName => switch (this) {
+        VisualSource.dalle3 => 'DALL-E 3',
+        VisualSource.stabilityAi => 'Stability AI',
+        VisualSource.flux => 'fal.ai Flux',
+        VisualSource.pexels => 'Pexels',
+        VisualSource.pixabay => 'Pixabay',
+        VisualSource.coverr => 'Coverr',
+      };
+
+  /// True when this source generates images via AI.
+  /// False when it searches an existing stock library.
+  bool get isAI => switch (this) {
+        VisualSource.dalle3 ||
+        VisualSource.stabilityAi ||
+        VisualSource.flux =>
+          true,
+        _ => false,
+      };
+
+  bool get isStock => !isAI;
+
+  /// True if the source primarily returns video clips.
+  /// (Pexels/Pixabay support both — we default to video for stock.)
+  bool get producesVideo => switch (this) {
+        VisualSource.pexels ||
+        VisualSource.pixabay ||
+        VisualSource.coverr =>
+          true,
+        _ => false,
+      };
+
+  String get defaultModel => switch (this) {
+        VisualSource.dalle3 => 'dall-e-3',
+        VisualSource.stabilityAi => 'sd3-medium',
+        VisualSource.flux => 'fal-ai/flux/schnell',
+        _ => '',
+      };
+
+  String get keyHint => switch (this) {
+        VisualSource.dalle3 => 'sk-…  platform.openai.com',
+        VisualSource.stabilityAi => 'sk-…  platform.stability.ai',
+        VisualSource.flux => 'your-key  fal.ai/dashboard',
+        VisualSource.pexels => 'get free key at pexels.com/api',
+        VisualSource.pixabay => 'get free key at pixabay.com/api/docs',
+        VisualSource.coverr => 'get free key at coverr.co/api',
+      };
+
+  String get category => isAI ? 'AI Image' : 'Stock';
+}
+
+extension TtsProviderInfo on TtsProvider {
+  String get displayName => switch (this) {
+        TtsProvider.deviceTts => 'On-Device (free, offline)',
+        TtsProvider.edgeTts => 'Edge TTS (free, online)',
+        TtsProvider.azureTts => 'Azure TTS',
+        TtsProvider.openaiTts => 'OpenAI TTS',
+        TtsProvider.elevenLabs => 'ElevenLabs',
+      };
+
+  bool get requiresKey => switch (this) {
+        TtsProvider.edgeTts || TtsProvider.deviceTts => false,
+        _ => true,
+      };
+
+  String get keyHint => switch (this) {
+        TtsProvider.azureTts => 'Azure Speech key  portal.azure.com',
+        TtsProvider.openaiTts => 'sk-…  platform.openai.com',
+        TtsProvider.elevenLabs => 'xi-…  elevenlabs.io',
+        _ => '',
+      };
+}
+
 class AppConfig {
   // ── LLM ──────────────────────────────────────────────────────────────────
   final LlmProvider llmProvider;
   final String llmApiKey;
   final String llmModel;
 
-  // ── Image ─────────────────────────────────────────────────────────────────
-  final ImageGenProvider imageProvider;
-  final String imageApiKey;
-  final String imageModel;
+  // ── Visual (AI OR stock) ─────────────────────────────────────────────────
+  final VisualSource visualSource;
+  final String visualApiKey;
+  final String visualModel; // only used by AI sources
 
   // ── TTS ───────────────────────────────────────────────────────────────────
   final TtsProvider ttsProvider;
   final String ttsApiKey;
-  final String ttsVoiceId;
-  final String ttsVoice;
+  final String ttsVoiceId;      // ElevenLabs voice id, Edge voice name
+  final String ttsVoice;        // OpenAI voice name
+  final String azureRegion;     // Azure Speech region (e.g. "eastus")
 
   // ── Video ─────────────────────────────────────────────────────────────────
   final bool subtitlesEnabled;
@@ -56,13 +145,14 @@ class AppConfig {
     this.llmProvider = LlmProvider.openrouter,
     this.llmApiKey = '',
     this.llmModel = 'openai/gpt-4o-mini',
-    this.imageProvider = ImageGenProvider.dalle3,
-    this.imageApiKey = '',
-    this.imageModel = 'dall-e-3',
-    this.ttsProvider = TtsProvider.elevenLabs,
+    this.visualSource = VisualSource.pexels,
+    this.visualApiKey = '',
+    this.visualModel = '',
+    this.ttsProvider = TtsProvider.deviceTts,
     this.ttsApiKey = '',
-    this.ttsVoiceId = 'EXAVITQu4vr4xnSDxMaL',
+    this.ttsVoiceId = 'en-US-AriaNeural',
     this.ttsVoice = 'nova',
+    this.azureRegion = 'eastus',
     this.subtitlesEnabled = true,
     this.sceneCount = 5,
     this.kenBurnsEnabled = true,
@@ -74,13 +164,14 @@ class AppConfig {
     LlmProvider? llmProvider,
     String? llmApiKey,
     String? llmModel,
-    ImageGenProvider? imageProvider,
-    String? imageApiKey,
-    String? imageModel,
+    VisualSource? visualSource,
+    String? visualApiKey,
+    String? visualModel,
     TtsProvider? ttsProvider,
     String? ttsApiKey,
     String? ttsVoiceId,
     String? ttsVoice,
+    String? azureRegion,
     bool? subtitlesEnabled,
     int? sceneCount,
     bool? kenBurnsEnabled,
@@ -89,13 +180,14 @@ class AppConfig {
       llmProvider: llmProvider ?? this.llmProvider,
       llmApiKey: llmApiKey ?? this.llmApiKey,
       llmModel: llmModel ?? this.llmModel,
-      imageProvider: imageProvider ?? this.imageProvider,
-      imageApiKey: imageApiKey ?? this.imageApiKey,
-      imageModel: imageModel ?? this.imageModel,
+      visualSource: visualSource ?? this.visualSource,
+      visualApiKey: visualApiKey ?? this.visualApiKey,
+      visualModel: visualModel ?? this.visualModel,
       ttsProvider: ttsProvider ?? this.ttsProvider,
       ttsApiKey: ttsApiKey ?? this.ttsApiKey,
       ttsVoiceId: ttsVoiceId ?? this.ttsVoiceId,
       ttsVoice: ttsVoice ?? this.ttsVoice,
+      azureRegion: azureRegion ?? this.azureRegion,
       subtitlesEnabled: subtitlesEnabled ?? this.subtitlesEnabled,
       sceneCount: sceneCount ?? this.sceneCount,
       kenBurnsEnabled: kenBurnsEnabled ?? this.kenBurnsEnabled,
@@ -106,13 +198,14 @@ class AppConfig {
         'llmProvider': llmProvider.name,
         'llmApiKey': llmApiKey,
         'llmModel': llmModel,
-        'imageProvider': imageProvider.name,
-        'imageApiKey': imageApiKey,
-        'imageModel': imageModel,
+        'visualSource': visualSource.name,
+        'visualApiKey': visualApiKey,
+        'visualModel': visualModel,
         'ttsProvider': ttsProvider.name,
         'ttsApiKey': ttsApiKey,
         'ttsVoiceId': ttsVoiceId,
         'ttsVoice': ttsVoice,
+        'azureRegion': azureRegion,
         'subtitlesEnabled': subtitlesEnabled,
         'sceneCount': sceneCount,
         'kenBurnsEnabled': kenBurnsEnabled,
@@ -125,19 +218,20 @@ class AppConfig {
         ),
         llmApiKey: j['llmApiKey'] as String? ?? '',
         llmModel: j['llmModel'] as String? ?? 'openai/gpt-4o-mini',
-        imageProvider: ImageGenProvider.values.firstWhere(
-          (e) => e.name == j['imageProvider'],
-          orElse: () => ImageGenProvider.dalle3,
+        visualSource: VisualSource.values.firstWhere(
+          (e) => e.name == j['visualSource'],
+          orElse: () => VisualSource.pexels,
         ),
-        imageApiKey: j['imageApiKey'] as String? ?? '',
-        imageModel: j['imageModel'] as String? ?? 'dall-e-3',
+        visualApiKey: j['visualApiKey'] as String? ?? '',
+        visualModel: j['visualModel'] as String? ?? '',
         ttsProvider: TtsProvider.values.firstWhere(
           (e) => e.name == j['ttsProvider'],
-          orElse: () => TtsProvider.elevenLabs,
+          orElse: () => TtsProvider.deviceTts,
         ),
         ttsApiKey: j['ttsApiKey'] as String? ?? '',
-        ttsVoiceId: j['ttsVoiceId'] as String? ?? 'EXAVITQu4vr4xnSDxMaL',
+        ttsVoiceId: j['ttsVoiceId'] as String? ?? 'en-US-AriaNeural',
         ttsVoice: j['ttsVoice'] as String? ?? 'nova',
+        azureRegion: j['azureRegion'] as String? ?? 'eastus',
         subtitlesEnabled: j['subtitlesEnabled'] as bool? ?? true,
         sceneCount: j['sceneCount'] as int? ?? 5,
         kenBurnsEnabled: j['kenBurnsEnabled'] as bool? ?? true,
