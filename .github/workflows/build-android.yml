@@ -32,12 +32,14 @@ jobs:
       - name: Accept Android SDK licenses
         run: yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
-      - name: Install NDK
+      - name: Install NDK and platforms
         run: |
           $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager \
             "ndk;25.1.8937393" \
             "build-tools;34.0.0" \
+            "build-tools;35.0.0" \
             "platforms;android-34" \
+            "platforms;android-35" \
             --sdk_root=$ANDROID_SDK_ROOT
 
       - name: Set up Flutter 3.24.5
@@ -101,7 +103,7 @@ jobs:
             2. Pick providers and enter your keys:
                - **LLM (script)**: OpenRouter | OpenAI
                - **Image**: DALL-E 3 | Stability AI | fal.ai Flux
-               - **Voice**: ElevenLabs | OpenAI TTS | on-device (free)
+               - **Voice**: ElevenLabs | OpenAI TTS
             3. Enter topic → **Generate Video**
 
             ### Pipeline
