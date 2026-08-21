@@ -211,7 +211,7 @@ class TtsService {
     int idx,
     AppConfig cfg,
   ) async {
-    final region = cfg.azureRegion.isNotEmpty ? cfg.azureRegion : 'eastus';
+    final region = cfg.azureRegion.trim().isNotEmpty ? cfg.azureRegion.trim() : 'eastus';
     final voice = cfg.ttsVoiceId.isNotEmpty
         ? cfg.ttsVoiceId
         : 'en-US-AriaNeural';
@@ -223,7 +223,7 @@ class TtsService {
       'https://$region.tts.speech.microsoft.com/cognitiveservices/v1',
       options: Options(
         headers: {
-          'Ocp-Apim-Subscription-Key': cfg.ttsApiKey,
+          'Ocp-Apim-Subscription-Key': _cleanKey(cfg.ttsApiKey),
           'Content-Type': 'application/ssml+xml',
           'X-Microsoft-OutputFormat': 'audio-24khz-48kbitrate-mono-mp3',
           'User-Agent': 'CloudAICreator',
@@ -252,7 +252,7 @@ class TtsService {
       'https://api.elevenlabs.io/v1/text-to-speech/$voiceId',
       options: Options(
         headers: {
-          'xi-api-key': cfg.ttsApiKey,
+          'xi-api-key': _cleanKey(cfg.ttsApiKey),
           'Content-Type': 'application/json',
           'Accept': 'audio/mpeg',
         },
@@ -280,7 +280,7 @@ class TtsService {
       'https://api.openai.com/v1/audio/speech',
       options: Options(
         headers: {
-          'Authorization': 'Bearer ${cfg.ttsApiKey}',
+          'Authorization': 'Bearer ${_cleanKey(cfg.ttsApiKey)}',
           'Content-Type': 'application/json',
         },
         responseType: ResponseType.bytes,
@@ -363,7 +363,7 @@ class TtsService {
           final r = await _dio.get(
             'https://api.elevenlabs.io/v1/user',
             options: Options(
-              headers: {'xi-api-key': cfg.ttsApiKey},
+              headers: {'xi-api-key': _cleanKey(cfg.ttsApiKey)},
               validateStatus: (_) => true,
             ),
           );
@@ -374,7 +374,7 @@ class TtsService {
           final r = await _dio.get(
             'https://api.openai.com/v1/models',
             options: Options(
-              headers: {'Authorization': 'Bearer ${cfg.ttsApiKey}'},
+              headers: {'Authorization': 'Bearer ${_cleanKey(cfg.ttsApiKey)}'},
               validateStatus: (_) => true,
             ),
           );
@@ -382,11 +382,11 @@ class TtsService {
           return null;
 
         case TtsProvider.azureTts:
-          final region = cfg.azureRegion.isNotEmpty ? cfg.azureRegion : 'eastus';
+          final region = cfg.azureRegion.trim().isNotEmpty ? cfg.azureRegion.trim() : 'eastus';
           final r = await _dio.post(
             'https://$region.api.cognitive.microsoft.com/sts/v1.0/issueToken',
             options: Options(
-              headers: {'Ocp-Apim-Subscription-Key': cfg.ttsApiKey},
+              headers: {'Ocp-Apim-Subscription-Key': _cleanKey(cfg.ttsApiKey)},
               validateStatus: (_) => true,
             ),
           );
@@ -417,6 +417,12 @@ class TtsService {
   }
 
   Future<void> dispose() async {}
+
+  String _cleanKey(String raw) {
+    var k = raw.trim();
+    if (k.toLowerCase().startsWith('bearer ')) k = k.substring(7).trim();
+    return k;
+  }
 
   String _err(dynamic body) {
     if (body is Map) {

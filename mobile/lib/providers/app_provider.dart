@@ -157,33 +157,55 @@ class AppProvider extends ChangeNotifier {
 
   Future<void> _generateOneScene(Scene scene) async {
     final i = scene.index;
+    final searchTerms = scene.searchQuery.isNotEmpty
+        ? scene.searchQuery
+        : scene.narration.split(' ').take(5).join(' ');
+
+    // Fire both in parallel but track their errors independently so we can
+    // tell the user which service failed.
     _update(currentTask!.addLog(
-        'Scene ${i + 1}: fetching ${config.visualSource.displayName} + voice…'));
+        'Scene ${i + 1}: fetching ${config.visualSource.displayName}…'));
 
-    final results = await Future.wait([
-      _visualService.fetch(
-        imagePrompt: scene.imagePrompt,
-        searchQuery: scene.searchQuery.isNotEmpty
-            ? scene.searchQuery
-            : scene.narration.split(' ').take(5).join(' '),
-        sceneIndex: i,
-        cfg: config,
-      ),
-      _ttsService.synthesize(scene.narration, i, config),
-    ]);
+    final visualFut = _visualService
+        .fetch(
+      imagePrompt: scene.imagePrompt,
+      searchQuery: searchTerms,
+      sceneIndex: i,
+      cfg: config,
+    )
+        .then<Object?>((v) => v, onError: (e) => e);
 
-    final visual = results[0] as VisualAsset;
+    final audioFut = _ttsService
+        .synthesize(scene.narration, i, config)
+        .then<Object?>((a) => a, onError: (e) => e);
+
+    final results = await Future.wait([visualFut, audioFut]);
+    final visualResult = results[0];
+    final audioResult = results[1];
+
+    final errors = <String>[];
+    if (visualResult is Exception || visualResult is Error) {
+      errors.add('${config.visualSource.displayName}: $visualResult');
+    }
+    if (audioResult is Exception || audioResult is Error) {
+      errors.add('${config.ttsProvider.displayName}: $audioResult');
+    }
+    if (errors.isNotEmpty) {
+      throw Exception(errors.join(' | '));
+    }
+
+    final visual = visualResult as VisualAsset;
     scene.mediaPath = visual.path;
     scene.mediaIsVideo = visual.isVideo;
 
-    final audioResult = results[1] as ({String path, double duration});
-    scene.audioPath = audioResult.path;
+    final audio = audioResult as ({String path, double duration});
+    scene.audioPath = audio.path;
 
     try {
-      final probed = await _videoService.probeDuration(audioResult.path);
-      scene.audioDuration = probed > 0 ? probed : audioResult.duration;
+      final probed = await _videoService.probeDuration(audio.path);
+      scene.audioDuration = probed > 0 ? probed : audio.duration;
     } catch (_) {
-      scene.audioDuration = audioResult.duration;
+      scene.audioDuration = audio.duration;
     }
   }
 

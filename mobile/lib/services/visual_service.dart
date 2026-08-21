@@ -42,11 +42,12 @@ class VisualService {
   // ── AI generators ────────────────────────────────────────────────────────
 
   Future<VisualAsset> _dalle3(String prompt, int idx, AppConfig cfg) async {
+    final key = _cleanKey(cfg.visualApiKey);
     final resp = await _dio.post(
       'https://api.openai.com/v1/images/generations',
       options: Options(
         headers: {
-          'Authorization': 'Bearer ${cfg.visualApiKey}',
+          'Authorization': 'Bearer $key',
           'Content-Type': 'application/json',
         },
         receiveTimeout: const Duration(minutes: 2),
@@ -66,11 +67,12 @@ class VisualService {
   }
 
   Future<VisualAsset> _stabilityAi(String prompt, int idx, AppConfig cfg) async {
+    final key = _cleanKey(cfg.visualApiKey);
     final resp = await _dio.post(
       'https://api.stability.ai/v2beta/stable-image/generate/sd3',
       options: Options(
         headers: {
-          'Authorization': 'Bearer ${cfg.visualApiKey}',
+          'Authorization': 'Bearer $key',
           'Accept': 'application/json',
         },
         contentType: 'multipart/form-data',
@@ -97,11 +99,12 @@ class VisualService {
     final model = cfg.visualModel.isNotEmpty
         ? cfg.visualModel
         : 'fal-ai/flux/schnell';
+    final key = _cleanKey(cfg.visualApiKey);
     final resp = await _dio.post(
       'https://fal.run/$model',
       options: Options(
         headers: {
-          'Authorization': 'Key ${cfg.visualApiKey}',
+          'Authorization': 'Key $key',
           'Content-Type': 'application/json',
         },
         receiveTimeout: const Duration(minutes: 3),
@@ -128,6 +131,7 @@ class VisualService {
 
   Future<VisualAsset> _pexels(String query, int idx, AppConfig cfg) async {
     if (query.isEmpty) throw Exception('Pexels: empty search query');
+    final key = _cleanKey(cfg.visualApiKey);
     final resp = await _dio.get(
       'https://api.pexels.com/videos/search',
       queryParameters: {
@@ -136,10 +140,15 @@ class VisualService {
         'orientation': 'portrait',
       },
       options: Options(
-        headers: {'Authorization': cfg.visualApiKey},
+        headers: {'Authorization': key},
         receiveTimeout: const Duration(seconds: 20),
+        validateStatus: (_) => true,
       ),
     );
+    if (resp.statusCode != 200) {
+      throw Exception('Pexels HTTP ${resp.statusCode}: ${_err(resp.data)} '
+          '(check Settings → Visuals → API Key)');
+    }
     final videos = resp.data['videos'] as List?;
     if (videos == null || videos.isEmpty) {
       throw Exception('Pexels: no videos for "$query"');
@@ -160,16 +169,23 @@ class VisualService {
 
   Future<VisualAsset> _pixabay(String query, int idx, AppConfig cfg) async {
     if (query.isEmpty) throw Exception('Pixabay: empty search query');
+    final key = _cleanKey(cfg.visualApiKey);
     final resp = await _dio.get(
       'https://pixabay.com/api/videos/',
       queryParameters: {
-        'key': cfg.visualApiKey,
+        'key': key,
         'q': query,
         'per_page': 10,
         'safesearch': 'true',
       },
-      options: Options(receiveTimeout: const Duration(seconds: 20)),
+      options: Options(
+        receiveTimeout: const Duration(seconds: 20),
+        validateStatus: (_) => true,
+      ),
     );
+    if (resp.statusCode != 200) {
+      throw Exception('Pixabay HTTP ${resp.statusCode}: ${_err(resp.data)}');
+    }
     final hits = resp.data['hits'] as List?;
     if (hits == null || hits.isEmpty) {
       throw Exception('Pixabay: no videos for "$query"');
@@ -187,6 +203,7 @@ class VisualService {
 
   Future<VisualAsset> _coverr(String query, int idx, AppConfig cfg) async {
     if (query.isEmpty) throw Exception('Coverr: empty search query');
+    final key = _cleanKey(cfg.visualApiKey);
     final resp = await _dio.get(
       'https://api.coverr.co/videos',
       queryParameters: {
@@ -195,10 +212,14 @@ class VisualService {
         'page_size': 10,
       },
       options: Options(
-        headers: {'Authorization': 'Bearer ${cfg.visualApiKey}'},
+        headers: {'Authorization': 'Bearer $key'},
         receiveTimeout: const Duration(seconds: 20),
+        validateStatus: (_) => true,
       ),
     );
+    if (resp.statusCode == 401 || resp.statusCode == 403) {
+      throw Exception('Coverr HTTP ${resp.statusCode}: ${_err(resp.data)}');
+    }
     final hits = (resp.data['hits'] as List?) ?? [];
     if (hits.isEmpty) {
       throw Exception('Coverr: no videos for "$query"');
@@ -229,12 +250,13 @@ class VisualService {
 
   Future<String?> testKey(AppConfig cfg) async {
     try {
+      final key = _cleanKey(cfg.visualApiKey);
       switch (cfg.visualSource) {
         case VisualSource.dalle3:
           final r = await _dio.get(
             'https://api.openai.com/v1/models',
             options: Options(
-              headers: {'Authorization': 'Bearer ${cfg.visualApiKey}'},
+              headers: {'Authorization': 'Bearer $key'},
               validateStatus: (_) => true,
             ),
           );
@@ -245,7 +267,7 @@ class VisualService {
           final r = await _dio.get(
             'https://api.stability.ai/v1/user/account',
             options: Options(
-              headers: {'Authorization': 'Bearer ${cfg.visualApiKey}'},
+              headers: {'Authorization': 'Bearer $key'},
               validateStatus: (_) => true,
             ),
           );
@@ -256,7 +278,7 @@ class VisualService {
           final r = await _dio.get(
             'https://queue.fal.run/fal-ai/flux/schnell',
             options: Options(
-              headers: {'Authorization': 'Key ${cfg.visualApiKey}'},
+              headers: {'Authorization': 'Key $key'},
               validateStatus: (_) => true,
             ),
           );
@@ -266,11 +288,13 @@ class VisualService {
           return null;
 
         case VisualSource.pexels:
+          // Use the same /videos/search endpoint the app actually calls,
+          // so the test proves what the app does.
           final r = await _dio.get(
-            'https://api.pexels.com/v1/curated',
-            queryParameters: {'per_page': 1},
+            'https://api.pexels.com/videos/search',
+            queryParameters: {'query': 'nature', 'per_page': 1},
             options: Options(
-              headers: {'Authorization': cfg.visualApiKey},
+              headers: {'Authorization': key},
               validateStatus: (_) => true,
             ),
           );
@@ -279,12 +303,8 @@ class VisualService {
 
         case VisualSource.pixabay:
           final r = await _dio.get(
-            'https://pixabay.com/api/',
-            queryParameters: {
-              'key': cfg.visualApiKey,
-              'q': 'nature',
-              'per_page': 3,
-            },
+            'https://pixabay.com/api/videos/',
+            queryParameters: {'key': key, 'q': 'nature', 'per_page': 3},
             options: Options(validateStatus: (_) => true),
           );
           if (r.statusCode != 200) return 'HTTP ${r.statusCode}: ${_err(r.data)}';
@@ -295,7 +315,7 @@ class VisualService {
             'https://api.coverr.co/videos',
             queryParameters: {'page_size': 1},
             options: Options(
-              headers: {'Authorization': 'Bearer ${cfg.visualApiKey}'},
+              headers: {'Authorization': 'Bearer $key'},
               validateStatus: (_) => true,
             ),
           );
@@ -310,6 +330,14 @@ class VisualService {
       }
       return e.toString();
     }
+  }
+
+  /// Strip whitespace and a leading "Bearer " that users often copy from docs.
+  String _cleanKey(String raw) {
+    var k = raw.trim();
+    if (k.toLowerCase().startsWith('bearer ')) k = k.substring(7).trim();
+    if (k.toLowerCase().startsWith('key ')) k = k.substring(4).trim();
+    return k;
   }
 
   String _err(dynamic body) {

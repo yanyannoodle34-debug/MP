@@ -205,8 +205,10 @@ Rules:
   // ── Helpers ────────────────────────────────────────────────────────────────
 
   Map<String, dynamic> _headers(AppConfig cfg) {
+    var key = cfg.llmApiKey.trim();
+    if (key.toLowerCase().startsWith('bearer ')) key = key.substring(7).trim();
     final h = <String, dynamic>{
-      'Authorization': 'Bearer ${cfg.llmApiKey}',
+      'Authorization': 'Bearer $key',
       'Content-Type': 'application/json',
     };
     if (cfg.llmProvider == LlmProvider.openrouter) {
