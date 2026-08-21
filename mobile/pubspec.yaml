@@ -1,7 +1,7 @@
 name: money_printer_mobile
 description: CloudAI Creator — cloud AI script/image/voice, on-device video render.
 publish_to: none
-version: 1.4.0+7
+version: 1.4.1+8
 
 environment:
   sdk: '>=3.4.0 <4.0.0'
@@ -49,7 +49,9 @@ dependencies:
   # Device TTS — the bulletproof "free" fallback. Every Android device has
   # a system TTS engine (Google TTS pre-installed on modern phones) with
   # high-quality neural voices. Works offline, zero API calls.
-  flutter_tts: ^4.2.0
+  # Pin to 4.0.2: newer 4.2.x versions were compiled with Kotlin 2.2 and
+  # break our Kotlin 1.8.22 project build.
+  flutter_tts: 4.0.2
 
   # SHA-256 for Edge TTS's Sec-MS-GEC handshake token.
   crypto: ^3.0.3
